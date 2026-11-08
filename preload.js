@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld('boxshelf', {
   legendaryStatus: () => call('legendary:status'), legendaryDownload: () => call('legendary:download'), legendaryLogin: () => call('legendary:login'), legendaryCode: code => call('legendary:code', { code }), legendaryLogout: () => call('legendary:logout'), // (Tyro-Shelf-19)
   legendaryAuthWindow: () => call('legendary:authwin'), legendaryRefresh: () => call('legendary:refresh'), gameActions: o => call('game:actions', o),
   steamStatus: () => call('steam:status'), steamRefresh: () => call('steam:refresh'),
+  dmList: () => call('dm:list'), dmInfo: o => call('dm:info', o), dmAdd: o => call('dm:add', o), dmDo: (act, id) => call('dm:do', { act, id }), dmDefaultDir: () => call('dm:defaultDir'), onDmUpdate: cb => ipcRenderer.on('dm:update', (e, l) => cb(l)), onDmDone: cb => ipcRenderer.on('dm:done', (e, d) => cb(d)),
+  gameInstall: o => call('game:install', o), storageScan: o => call('storage:scan', o || {}),
   gameScripts: o => call('game:scripts', o), shortcutCreate: o => call('shortcut:create', o), shortcutTake: () => call('shortcut:take'), onShortcut: cb => ipcRenderer.on('shortcut:launch', (e, id) => cb(id)),
   gameWindow: o => call('game:window', o), // (Tyro-Shelf-15) { id } and window: '' (the game's own setting) | 'borderless' | 'windowed'
   renameGame: o => call('game:rename', o), // (beta.5) { systemId, file } or { id }, and title ('' = back to the file's name)
