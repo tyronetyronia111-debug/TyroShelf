@@ -25,14 +25,14 @@ function buildArgs(template, rom) {
 // but their button mapping in Dolphin may need choosing again: the setting in Settings → Controllers turns this off.)
 let padSafe = true;
 const setPadSafe = on => { padSafe = on !== false; };
-function start(exe, args, onExit, env, isEmu) { // env: the emulator's own environment (PS5: the KytyJets preset); else Boxshelf's
+function start(exe, args, onExit, env, isEmu, cwd) { // env: the emulator's own environment (PS5: the KytyJets preset); else Boxshelf's
   exe = exe && expand(String(exe).trim().replace(/^"(.*)"$/, '$1')); // same rules as the Settings check: %VAR%, {app}, pasted "quotes"
   if (!exe || !isFile(exe)) throw new Error(`Can't find ${exe || 'the program'}. Check its path in Settings.`);
   if (running) throw new Error('Something is already running. Close it first.');
   // detached: on Windows a normal child sits in Node's kill-on-close job object, so a Boxshelf crash or update restart
   // would take the emulator (and its unsaved game) with it. Not unref'd: the 'exit' event must still reach us.
   if (padSafe && isEmu) { env = Object.assign({}, env || process.env, { SDL_JOYSTICK_HIDAPI_PS5_RUMBLE: '0', SDL_JOYSTICK_HIDAPI_PS4_RUMBLE: '0', SDL_JOYSTICK_HIDAPI_PS5_PLAYER_LED: '0', SDL_JOYSTICK_ENHANCED_REPORTS: '0' }); }
-  const child = spawn(exe, args, Object.assign({ cwd: path.dirname(exe), windowsHide: false, stdio: 'ignore', detached: true }, env ? { env } : {}));
+  const child = spawn(exe, args, Object.assign({ cwd: cwd && require('fs').existsSync(cwd) ? cwd : path.dirname(exe), windowsHide: false, stdio: 'ignore', detached: true }, env ? { env } : {}));
   running = child;
   const started = Date.now(); let done = false, spawned = false;
   const finish = info => { if (done) return; done = true; running = null; onExit({ ...info, ms: Date.now() - started }); };
@@ -64,7 +64,7 @@ function launchEmulator(sysCfg, onExit) {
   return start(sysCfg.emulator, buildArgs(sysCfg.emulatorArgs, ''), onExit, undefined, true);
 }
 
-function launchApp(exe, onExit, args) { return start(exe, Array.isArray(args) ? args : [], onExit); }
+function launchApp(exe, onExit, args, cwd) { return start(exe, Array.isArray(args) ? args : [], onExit, undefined, false, cwd); }
 
 function launchSteam(appid) {
   if (!/^\d+$/.test(String(appid))) throw new Error('Unknown Steam game.');

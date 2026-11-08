@@ -93,4 +93,41 @@ async function download() {
   return { ok: false, error: "Couldn't download Legendary (" + tried.join('; ') + '). Download legendary.exe from github.com/derrod/legendary/releases yourself and choose it in Settings.' };
 }
 
-module.exports = { init, setPath, find, installed, status, authCode, logout, download, LOGIN_URL, exeName };
+// the games the account owns (`legendary list --json`), kept in a small cache so the shelf can show what isn't installed yet
+const ownedFile = () => path.join(dir || os.tmpdir(), 'owned.json');
+const signedInFile = () => { try { return fs.statSync(path.join(cfgDir(), 'user.json')).size > 20; } catch { return false; } };
+function owned() { try { const j = JSON.parse(fs.readFileSync(ownedFile(), 'utf8')); return { at: +j.at || 0, games: Array.isArray(j.games) ? j.games : [] }; } catch { return { at: 0, games: [] }; } }
+let refreshing = null;
+function refreshOwned() {
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    if (!find() || !signedInFile()) return false;
+    const r = await run(['list', '--json'], 180000);
+    let arr; try { arr = JSON.parse(r.out.slice(r.out.indexOf('['))); } catch { log('Legendary list: unreadable answer', String(r.out).slice(0, 200)); return false; }
+    if (!Array.isArray(arr)) return false;
+    const games = [];
+    for (const g of arr) {
+      if (!g || typeof g !== 'object') continue;
+      const md = g.metadata || {}, app = String(g.app_name || md.id || ''), title = String(g.app_title || md.title || '').trim();
+      if (!app || !title || md.mainGameItem || /^UE_|^Fortnite_/i.test(app) && false) continue; // (mainGameItem: a DLC of another game)
+      const cats = Array.isArray(md.categories) ? md.categories.map(c => String(c && c.path || c)) : null;
+      if (cats && cats.length && !cats.some(c => /^games/i.test(c))) continue; // plugins, engine parts, add-ons
+      games.push({ app, title });
+    }
+    fs.mkdirSync(path.dirname(ownedFile()), { recursive: true });
+    fs.writeFileSync(ownedFile(), JSON.stringify({ at: Date.now(), games }));
+    log('Legendary: the account owns', games.length, 'games');
+    return true;
+  })().catch(e => { log('Legendary list:', e.message); return false; }).finally(() => { refreshing = null; });
+  return refreshing;
+}
+// a visible console window for the things Legendary asks you about (sign in, install): a small .bat that pauses at the end
+function consoleRun(args, name) {
+  const exe = find(); if (!exe) return false;
+  if (!args.every(a => /^[\w.=:-]+$/.test(a))) return false;
+  const f = path.join(dir || os.tmpdir(), name + '.bat'); fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, `@echo off\r\ntitle Legendary\r\n"${exe}" ${args.join(' ')}\r\necho.\r\npause\r\n`);
+  require('electron').shell.openPath(f); return true;
+}
+
+module.exports = { owned, refreshOwned, signedInFile, consoleRun, init, setPath, find, installed, status, authCode, logout, download, LOGIN_URL, exeName };

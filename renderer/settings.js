@@ -160,6 +160,8 @@ function build(){
     T("Use Legendary for Epic games","pc.legendary",true,"Legendary is a small program that starts Epic games without the Epic Games Launcher (much lighter). Games it has installed start through it; the rest keep using the Epic launcher.",{rescan:true,keys:"legendary epic launcher lighter",sub:()=>lgSub()}),
     {t:"action",label:"Legendary",btn:()=>lgSt&&lgSt.found?"Check":"Get it",info:"Downloads Legendary from GitHub (github.com/derrod/legendary, GPL-3.0) into Tyro-Shelf's data folder, or finds one you already have. Install your Epic games with Legendary itself (legendary install <game>); Tyro-Shelf lists what it has installed.",ns:true,keys:"legendary download get install",when:()=>pcOn("legendary"),run:lgGet,sub:()=>lgSub()},
     {t:"action",label:"Epic sign-in",btn:()=>lgSt&&lgSt.signedIn?"Sign out":"Sign in",info:"Opens Epic's login page. Copy the code it shows (the authorizationCode value), then paste it in the box that appears. Tyro-Shelf never sees your password; Legendary keeps the sign-in.",ns:true,keys:"legendary epic sign in login code",when:()=>pcOn("legendary")&&!!(lgSt&&lgSt.found),run:lgSign,sub:()=>lgSt&&lgSt.signedIn?{text:lgSt.account?"Signed in as "+lgSt.account:"Signed in"}:{text:"Not signed in",cls:"warn"}},
+    {t:"action",label:"Sign in in a window",btn:"Open",info:"If pasting the code below does nothing: opens Legendary's own sign-in in a console window. It opens Epic's page and asks for the code there. Then press Check on the Legendary row.",ns:true,keys:"legendary epic sign in window console",when:()=>pcOn("legendary")&&!!(lgSt&&lgSt.found&&!lgSt.signedIn),run:()=>{api.legendaryAuthWindow&&api.legendaryAuthWindow();toast("Sign-in window opened")}},
+    {t:"action",label:"Epic library",btn:"Refresh",info:"Reads the games your Epic account owns, so the Epic Games shelf can show the ones that aren't installed yet (Play opens Legendary's install window). Needs sign-in.",ns:true,keys:"legendary epic library refresh owned",when:()=>pcOn("legendary")&&!!(lgSt&&lgSt.signedIn),run:async()=>{toast("Reading your Epic library…");const r=await Promise.resolve(api.legendaryRefresh()).catch(()=>({ok:false}));toast(r&&r.ok?"Epic library updated":"Couldn't read the Epic library (see the log)");}},
     X("Epic code","","Paste the code from Epic's login page here and press Enter.",{get:()=>"",set:v=>lgCode(v),nosave:true,live:v=>lgCode(v),ns:true,when:()=>pcOn("legendary")&&!!(lgSt&&lgSt.found&&!lgSt.signedIn),keys:"legendary epic code paste"}),
     T("Show installed HoYoPlay games","pc.hoyoplay",true,"Genshin Impact, Honkai: Star Rail, Zenless Zone Zero and Honkai Impact 3rd, read from HoYoPlay's install list. Tyro-Shelf starts the game's own program. Idea from the HoYoPlay Library add-on for Playnite (MIT).",{rescan:true,keys:"hoyoplay hoyoverse genshin star rail zenless honkai mihoyo",sub:()=>pcCount("hoyoplay")}),
     H("Scripts for every game"),
@@ -964,6 +966,18 @@ async function dcSave(reset){const s=dcState;if(!s||!api.gameDiscord)return;
 let wmState=null;
 // (Tyro-Shelf-19) Details → Scripts: scripts before start / after start / after exit (each can also run the global one from
 // Settings → PC) and programs opened along with the game (the idea from Playnite's Scripts tab)
+let acState=null,acT=null;
+function acRows(){const st=acState;if(!st)return [];const R=st.rows,L=[];
+  st.a.forEach((a,i)=>{const k="x"+i;
+    L.push(R[k+"n"]||(R[k+"n"]=X(`Action ${i+1}: name`,"","The name shown when you press Play, e.g. Modded.",{get:()=>a.name,set:v=>{a.name=String(v||"").trim();acSave()},nosave:true,ns:true,keys:"play action profile modded"})));
+    L.push(R[k+"e"]||(R[k+"e"]=F(`Action ${i+1}: program`,"","file","The program that starts the game this way.",{get:()=>a.exe,set:v=>{a.exe=String(v||"");acSave()},nosave:true,ns:true,want:"file",ph:"Choose a program",filters:[{name:"Programs",extensions:["exe","bat","cmd"]}]})));
+    L.push(R[k+"a"]||(R[k+"a"]=X(`Action ${i+1}: options`,"","Command line options (optional).",{get:()=>a.args,set:v=>{a.args=String(v||"");acSave()},nosave:true,ns:true})));
+    L.push(R[k+"w"]||(R[k+"w"]=F(`Action ${i+1}: working folder`,"","folder","Optional. The program's own folder when empty.",{get:()=>a.cwd,set:v=>{a.cwd=String(v||"");acSave()},nosave:true,ns:true,want:"folder",ph:"Program's folder"})));
+    L.push(R[k+"r"]||(R[k+"r"]=A(`Action ${i+1}`,"Remove","Remove this way of starting the game.",()=>{st.a.splice(i,1);st.rows={};acSave();bump()},{ns:true})));});
+  if(st.a.length<10)L.push(R.add||(R.add=A("Add an action","Add","Another way to start this game.",()=>{st.a.push({name:"Modded",exe:"",args:"",cwd:""});st.rows={};bump()},{ns:true})));
+  return L}
+function acSave(){clearTimeout(acT);acT=setTimeout(async()=>{const st=acState;if(!st||!api.gameActions)return;
+  try{const r=await api.gameActions({id:st.ref.id,actions:st.a.filter(a=>a.exe)});const g=(info&&info.config&&info.config.games)||(cfg&&cfg.games);if(g){g[st.ref.id]={...(g[st.ref.id]||{})};if(r&&r.actions&&r.actions.length)g[st.ref.id].actions=r.actions;else delete g[st.ref.id].actions}toast("Saved")}catch(e){toast(errMsg(e));play("error")}},600)}
 let scState=null,scT=null;
 function scRows(){const st=scState;if(!st)return [];const s=st.s,R=st.rows,L=[];
   const txt=(k,label,info)=>R[k]||(R[k]=X(label,"",info,{get:()=>s[k],set:v=>{s[k]=String(v||"").replace(/\s+/g," ").trim();scSave()},nosave:true,ns:true,keys:"script powershell "+label}));
@@ -1223,6 +1237,9 @@ function route(page,o){if(!page)return;o=o||{};
   if(page==="discordgame"&&o.ref){dcState={ref:o.ref,title:String(o.title||""),d:{...(o.discord||{})}};
     MORE.discordgame={id:"discordgame",name:`Discord: ${dcState.title}`.slice(0,60),lead:"How this game shows on your Discord profile while you play it. Turn Discord on in Settings → System first.",rows:[{t:"dyn",fn:dcRows}]};
     goSecId(o.ref.systemId?"consoles":(/^(steam|epic)-/.test(String(o.ref.id||""))?"pc":"custom"));focus="page";rowI=0;openSub({kind:"more",id:"discordgame"});return}
+  if(page==="actionsgame"&&o.ref){acState={ref:o.ref,title:String(o.title||""),a:(o.actions||[]).map(x=>({...x})),rows:{}};
+    MORE.actionsgame={id:"actionsgame",name:`Play actions: ${acState.title}`.slice(0,60),lead:"Other ways to start this game. With any here, Play asks which version to start: the normal one or one of these.",rows:[{t:"dyn",fn:acRows}]};
+    goSecId(/^(steam|epic|hoyo)-/.test(String(o.ref.id||""))?"pc":"custom");focus="page";rowI=0;openSub({kind:"more",id:"actionsgame"});return}
   if(page==="scriptsgame"&&o.ref){const sc=o.scripts||{};scState={ref:o.ref,title:String(o.title||""),s:{pre:sc.pre||"",started:sc.started||"",post:sc.post||"",gPre:sc.gPre!==false,gStarted:sc.gStarted!==false,gPost:sc.gPost!==false,programs:(sc.programs||[]).map(p=>({...p}))},rows:{}};
     MORE.scriptsgame={id:"scriptsgame",name:`Scripts: ${scState.title}`.slice(0,60),lead:"Programs and PowerShell scripts that run along with this game. Scripts are one line, or the path of a .ps1 file.",rows:[{t:"dyn",fn:scRows}]};
     goSecId(o.ref.systemId||/^(steam|epic)-/.test(String(o.ref.id||""))?(o.ref.systemId?"consoles":"pc"):"custom");focus="page";rowI=0;openSub({kind:"more",id:"scriptsgame"});return}

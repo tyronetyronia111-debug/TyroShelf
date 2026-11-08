@@ -608,6 +608,7 @@ async function buildLibrary() {
   const pc = cfg.pc || {}, epic = [], mine = [];
   legendary.setPath(pc.legendaryPath);
   if (pc.epic !== false) try {
+    if (pc.legendary !== false && legendary.find() && legendary.signedInFile() && Date.now() - legendary.owned().at > 12 * 3600e3) legendary.refreshOwned().then(ok => { if (ok && alive()) win.webContents.send('library:changed', { legendary: 1 }); }); // (the owned list, in the background)
     const eg = pc.legendary !== false ? pcgames.legendaryGames(legendary) : [], lid = new Set(eg.map(g => g.id)); // Legendary's installs win over the Epic launcher's entry for the same game
     epic.push(...pcgames.epicGames().filter(g => !lid.has(g.id)), ...eg);
   } catch (e) { log('Epic library', e.message); }
@@ -620,7 +621,7 @@ async function buildLibrary() {
   // (Steam art by title only for Epic's store games: a recomp or a program added by hand often shares its name with an
   // unrelated Steam game, "Quarantine" got a puzzle game's cover; they keep the made-up case)
   const pcGame = g => { const sid = STORE_SRC.has(g.source) ? pcgames.steamIdOf(g.title) : null, l = sid ? steamart.local(sid) : {};
-    return { kind: 'steam', source: g.source, id: g.id, title: g.title, ...(g.legendary ? { tracked: true } : {}), ...(sid ? { info: steamart.gameInfo(sid) } : {}), art: { front: fileUrl(pccovers.cover(g.id) || l.front), back: fileUrl(pccovers.cover(g.id, 'back')) || undefined, spine: fileUrl(pccovers.cover(g.id, 'spine')) || undefined, hero: fileUrl(l.hero), icon: g.icon || undefined } }; };
+    return { kind: 'steam', source: g.source, id: g.id, title: g.title, ...(g.legendary ? { tracked: true } : {}), ...(g.notInstalled ? { notInstalled: true, region: 'Not installed' } : {}), ...(sid ? { info: steamart.gameInfo(sid) } : {}), art: { front: fileUrl(pccovers.cover(g.id) || l.front), back: fileUrl(pccovers.cover(g.id, 'back')) || undefined, spine: fileUrl(pccovers.cover(g.id, 'spine')) || undefined, hero: fileUrl(l.hero), icon: g.icon || undefined } }; };
   // (Tyro-Shelf-20) Epic and HoYoPlay games get a shelf each; the other stores stay on the PC shelf
   const byTitle = (a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' });
   const own = src => epic.filter(g => g.source === src);
@@ -1437,11 +1438,18 @@ const srcLabel = (g, other) => g.source === 'quiver' ? 'Quiver' : g.source === '
 let scriptRun = null;
 async function scriptsBefore(g) { const game = ((cfg.games || {})[g.id] || {}).scripts; scriptRun = { g: { id: g.id, title: g.title, exe: g.exe, source: g.source }, game }; try { await gscripts.before(scriptRun.g, game, cfg.scripts); } catch (e) { log('Game scripts:', e.message); } }
 function scriptsStarted() { if (scriptRun) try { gscripts.afterStart(scriptRun.g, scriptRun.game, cfg.scripts); } catch (e) { log('Game scripts:', e.message); } }
-handle('launch:pc', async ({ id }) => {
+handle('launch:pc', async ({ id, action }) => {
   let g = pcgames.byId(id);
   if (!g) { try { await buildLibrary(); } catch (e) { log('Library rebuild for launch:', e.message); } g = pcgames.byId(id); } // (a desktop shortcut can ask before the first scan has finished)
   if (!g) throw new Error("That game isn't on the shelf any more. The shelf is refreshing; try again in a moment.");
   // through its store's launcher (Epic, and from beta.7 Ubisoft Connect and the EA app: their sign-in, cloud saves, overlay)
+  // (Tyro-Shelf-21) a play action chosen for this game (Details → Play actions): its own program, arguments and folder
+  const acts = ((cfg.games || {})[g.id] || {}).actions || [], am = /^a(\d{1,2})$/.exec(String(action || '')), act = am ? acts[+am[1]] : null;
+  if (act) g = { ...g, exe: act.exe, args: act.args, uri: '', shellApp: '', legendary: '', notInstalled: false };
+  if (g.notInstalled) { // an Epic game the account owns: Legendary's own install window (it asks where, and shows progress)
+    if (!/^[\w.-]+$/.test(g.legendary) || !legendary.consoleRun(['install', g.legendary], 'install-' + g.legendary.slice(0, 40))) throw new Error("Couldn't open Legendary's install window.");
+    throw new Error(`${g.title} isn't installed. Legendary's install window is open: finish the install there, then refresh the shelf.`);
+  }
   const leg = g.legendary && (cfg.pc || {}).legendary !== false ? legendary.find() : '';
   if (!leg && g.uri && /^(com\.epicgames\.launcher|uplay|origin2):\/\//i.test(g.uri)) { busyCheck(); log('PC launch:', g.source, g.title); return shell.openExternal(g.uri).then(() => ({ external: true })); }
   // (beta.7) an Xbox / Game Pass game is a Windows app: started as one (its package family and app id, from pcgames.xboxGames)
@@ -1454,7 +1462,7 @@ handle('launch:pc', async ({ id }) => {
   log('PC launch window mode:', winMode || 'the game\'s own');
   windowedRun = winMode === 'windowed';
   launching = true; try { await scriptsBefore(g); } finally { launching = false; }
-  let r; try { r = leg ? launcher.launchApp(leg, onExit, ['launch', g.legendary]) : launcher.launchApp(g.exe, onExit, launcher.buildArgs(g.args || '', '')); } catch (e) { scriptRun = null; taskbarShow('the game did not start'); throw e; } runKind = 'app'; pendingPower = null; log('PC launch:', g.source, g.title, leg ? '(through Legendary)' : ''); scriptsStarted();
+  let r; try { r = leg ? launcher.launchApp(leg, onExit, ['launch', g.legendary]) : launcher.launchApp(g.exe, onExit, launcher.buildArgs(g.args || '', ''), act && act.cwd); } catch (e) { scriptRun = null; taskbarShow('the game did not start'); throw e; } runKind = 'app'; pendingPower = null; log('PC launch:', g.source, g.title, leg ? '(through Legendary)' : ''); scriptsStarted();
   try { const own = (cfg.games && cfg.games[g.id] || {}).discord || {}; presence.play({ title: own.name || g.title, system: srcLabel(g, 'PC'), systemId: 'pc', hide: own.hide === true, image: own.image || '', clientId: own.appId || '', startedAt: Date.now() }); } catch (e) { log('Discord presence:', e.message); }
   if (cfg.ui.homeMenu !== false) homemenu.begin({ systemId: 'pc', exe: g.exe, systemName: srcLabel(g, 'Custom'), title: g.title, hotkeys: {} });
   watchPad({ mouse: false, appPid: r.pid, fullscreenKey: null, home: true, winMode });
@@ -1522,8 +1530,17 @@ handle('pc:status', async () => { const pc = cfg.pc || {}; let epic = null; try 
 handle('legendary:status', async () => { legendary.setPath((cfg.pc || {}).legendaryPath); return legendary.status(); });
 handle('legendary:download', async () => { const r = await legendary.download(); if (r.ok && alive()) win.webContents.send('library:changed', { legendary: 1 }); return r; });
 handle('legendary:login', () => { shell.openExternal(legendary.LOGIN_URL); return { ok: true }; });
-handle('legendary:code', async ({ code }) => { const r = await legendary.authCode(code); if (r.ok && alive()) win.webContents.send('library:changed', { legendary: 1 }); return r; });
+handle('legendary:code', async ({ code }) => { const r = await legendary.authCode(code); if (r.ok) await legendary.refreshOwned(); if (r.ok && alive()) win.webContents.send('library:changed', { legendary: 1 }); return r; });
 handle('legendary:logout', () => legendary.logout());
+handle('legendary:authwin', () => ({ ok: legendary.consoleRun(['auth'], 'sign-in') })); // Legendary's own sign-in in a console window (opens Epic's page, asks for the code there)
+handle('legendary:refresh', async () => { const ok = await legendary.refreshOwned(); if (alive()) win.webContents.send('library:changed', { legendary: 1 }); return { ok }; });
+handle('game:actions', ({ id, actions }) => {
+  const key = String(id || ''); if (!key || key.length > 2048) throw new Error('Unknown game.');
+  const games = { ...(cfg.games || {}) }, cur = { ...(games[key] || {}) };
+  if (Array.isArray(actions) && actions.length) cur.actions = actions; else delete cur.actions;
+  if (Object.keys(cur).length) games[key] = cur; else delete games[key];
+  applyCfg({ ...cfg, games }); return { ok: true, actions: (cfg.games[key] || {}).actions || [] };
+});
 // ---- (Tyro-Shelf-19) a game's scripts and programs (Details → Scripts); the screen sends the whole set, config.js cleans it
 handle('game:scripts', ({ id, scripts }) => {
   const key = String(id || ''); if (!key || key.length > 2048) throw new Error('Unknown game.');

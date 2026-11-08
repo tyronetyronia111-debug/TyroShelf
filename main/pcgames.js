@@ -190,7 +190,10 @@ async function hoyoGames() {
 // settings carry over) and start through `legendary launch`. Games only the Epic launcher knows keep its link.
 function legendaryGames(leg) {
   if (!leg || !leg.find()) return [];
-  return leg.installed().map(g => ({ id: 'epic-' + slug(g.app), source: 'epic', title: g.title, exe: g.exe, legendary: g.app }));
+  const inst = leg.installed().map(g => ({ id: 'epic-' + slug(g.app), source: 'epic', title: g.title, exe: g.exe, legendary: g.app })), have = new Set(inst.map(g => g.id));
+  // what the account owns but hasn't installed yet: on the shelf too, Play opens Legendary's install window
+  for (const g of (leg.owned().games || [])) { const id = 'epic-' + slug(g.app); if (!have.has(id)) { have.add(id); inst.push({ id, source: 'epic', title: g.title, exe: '', legendary: g.app, notInstalled: true }); } }
+  return inst;
 }
 
 // ---------- the program in a game's folder ----------

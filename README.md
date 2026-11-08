@@ -36,6 +36,8 @@ Tyro-Shelf doesn't include or download any games, BIOS files or keys. You supply
 - **Epic games through Legendary** (Settings → PC): Settings can download [Legendary](https://github.com/derrod/legendary) and sign in
   to Epic with the code from Epic's page; games Legendary has installed start without the Epic Games Launcher. Games only the
   Epic launcher knows keep starting through it. Nothing of Legendary is bundled and no account details are kept by Tyro-Shelf.
+- **Play actions** (Details → Play actions, from Playnite's Actions tab): extra ways to start a game (a modded version, another
+  launcher), each with its own program, options and folder. Press Play and choose the normal game or one of them.
 - **Desktop shortcuts** (Details → Desktop shortcut): a `.lnk` on your desktop that starts Tyro-Shelf and then that game.
 - **HoYoPlay games** (Genshin Impact, Honkai: Star Rail, Zenless Zone Zero, Honkai Impact 3rd) on the PC shelf, read from HoYoPlay's
   install list. Programs that insist on administrator rights get a normal Windows prompt when started.

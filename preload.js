@@ -45,7 +45,7 @@ contextBridge.exposeInMainWorld('boxshelf', {
   tvScan: () => call('tv:scan'), tvList: () => call('tv:list'), tvAdFor: (systemId, file) => call('tv:adFor', { systemId, file }), tvLocal: ad => call('tv:local', { ad }),
   onTvFound: cb => ipcRenderer.on('tv:found', (e, x) => cb(x)),
   launchSteam: appid => call('launch:steam', { appid }),
-  launchPc: id => call('launch:pc', { id }), // (beta.4) Epic, Quiver and hand-added games, by id
+  launchPc: (id, action) => call('launch:pc', { id, action }), // (beta.4) Epic, Quiver and hand-added games, by id
   findQuiver: () => call('pc:findQuiver'),
   pcStatus: () => call('pc:status'),
   // (beta.5) a PC game's cover picker
@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('boxshelf', {
   presenceStatus: () => call('presence:status'),
   gameDiscord: o => call('game:discord', o), // { systemId, file } or { id }, and discord: { hide, name, image } (empty = the default)
   legendaryStatus: () => call('legendary:status'), legendaryDownload: () => call('legendary:download'), legendaryLogin: () => call('legendary:login'), legendaryCode: code => call('legendary:code', { code }), legendaryLogout: () => call('legendary:logout'), // (Tyro-Shelf-19)
+  legendaryAuthWindow: () => call('legendary:authwin'), legendaryRefresh: () => call('legendary:refresh'), gameActions: o => call('game:actions', o),
   gameScripts: o => call('game:scripts', o), shortcutCreate: o => call('shortcut:create', o), shortcutTake: () => call('shortcut:take'), onShortcut: cb => ipcRenderer.on('shortcut:launch', (e, id) => cb(id)),
   gameWindow: o => call('game:window', o), // (Tyro-Shelf-15) { id } and window: '' (the game's own setting) | 'borderless' | 'windowed'
   renameGame: o => call('game:rename', o), // (beta.5) { systemId, file } or { id }, and title ('' = back to the file's name)
