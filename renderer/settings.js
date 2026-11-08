@@ -160,7 +160,7 @@ function build(){
     T("Use Legendary for Epic games","pc.legendary",true,"Legendary is a small program that starts Epic games without the Epic Games Launcher (much lighter). Games it has installed start through it; the rest keep using the Epic launcher.",{rescan:true,keys:"legendary epic launcher lighter",sub:()=>lgSub()}),
     {t:"action",label:"Legendary",btn:()=>lgSt&&lgSt.found?"Check":"Get it",info:"Downloads Legendary from GitHub (github.com/derrod/legendary, GPL-3.0) into Tyro-Shelf's data folder, or finds one you already have. Install your Epic games with Legendary itself (legendary install <game>); Tyro-Shelf lists what it has installed.",ns:true,keys:"legendary download get install",when:()=>pcOn("legendary"),run:lgGet,sub:()=>lgSub()},
     {t:"action",label:"Epic sign-in",btn:()=>lgSt&&lgSt.signedIn?"Sign out":"Sign in",info:"Opens Epic's login page. Copy the code it shows (the authorizationCode value), then paste it in the box that appears. Tyro-Shelf never sees your password; Legendary keeps the sign-in.",ns:true,keys:"legendary epic sign in login code",when:()=>pcOn("legendary")&&!!(lgSt&&lgSt.found),run:lgSign,sub:()=>lgSt&&lgSt.signedIn?{text:lgSt.account?"Signed in as "+lgSt.account:"Signed in"}:{text:"Not signed in",cls:"warn"}},
-    X("Epic code","","Paste the code from Epic's login page here and press Enter.",{get:()=>"",set:()=>{},nosave:true,live:lgCode,ns:true,when:()=>pcOn("legendary")&&!!(lgSt&&lgSt.found&&!lgSt.signedIn),keys:"legendary epic code paste"}),
+    X("Epic code","","Paste the code from Epic's login page here and press Enter.",{get:()=>"",set:v=>lgCode(v),nosave:true,live:v=>lgCode(v),ns:true,when:()=>pcOn("legendary")&&!!(lgSt&&lgSt.found&&!lgSt.signedIn),keys:"legendary epic code paste"}),
     T("Show installed HoYoPlay games","pc.hoyoplay",true,"Genshin Impact, Honkai: Star Rail, Zenless Zone Zero and Honkai Impact 3rd, read from HoYoPlay's install list. Tyro-Shelf starts the game's own program. Idea from the HoYoPlay Library add-on for Playnite (MIT).",{rescan:true,keys:"hoyoplay hoyoverse genshin star rail zenless honkai mihoyo",sub:()=>pcCount("hoyoplay")}),
     H("Scripts for every game"),
     X("Before any game starts","scripts.pre","A PowerShell line (or the path of a .ps1 file) that every game can run before it starts. In a game's Details → Scripts, each game picks whether to run it.",{keys:"global script powershell before start"}),
@@ -712,7 +712,8 @@ async function lgGet(){
 async function lgSign(){
   if(lgSt&&lgSt.signedIn){await Promise.resolve(api.legendaryLogout&&api.legendaryLogout()).catch(()=>{});lgSt=null;lgLoad();toast("Signed out of Epic");return}
   api.legendaryLogin&&api.legendaryLogin();toast("Epic's page is open: copy the code, then paste it in the row below")}
-async function lgCode(v){v=String(v||"").trim();if(!v)return;
+let lgLast="",lgLastAt=0;
+async function lgCode(v){v=String(v||"").trim();if(!v||(v===lgLast&&Date.now()-lgLastAt<5000))return;lgLast=v;lgLastAt=Date.now();toast("Signing in to Epic…");
   const r=await Promise.resolve(api.legendaryCode(v)).catch(e=>({ok:false,error:errMsg(e)}));
   if(r&&r.ok){toast("Signed in to Epic");lgSt=null;pcSt=null;lgLoad()}else{toast((r&&r.error)||"Couldn't sign in");play("error")}}
 function pcCount(k){if(!pcSt)setTimeout(pcStatus,0);return pcSt&&pcSt[k]!=null?{text:pcSt[k]?`${pcSt[k]} installed`:"None installed"}:null}

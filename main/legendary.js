@@ -43,20 +43,21 @@ function installed() {
   }
   return out;
 }
-// signed in? (`status --json --offline` names the account; the user.json file is the fallback)
+// signed in? user.json is what Legendary writes after a successful login; `status` only adds the account name
 async function status() {
   const exe = find(); if (!exe) return { found: false };
-  const r = await run(['status', '--json', '--offline'], 20000);
-  let acct = ''; try { const j = JSON.parse(r.out.slice(r.out.indexOf('{'))); acct = String(j.account || '') ; } catch {}
-  if (!acct || /not logged/i.test(acct)) { try { if (fs.existsSync(path.join(cfgDir(), 'user.json')) && !acct) acct = 'signed in'; } catch {} }
-  return { found: true, exe, signedIn: !!acct && !/not logged/i.test(acct), account: acct && acct !== 'signed in' ? acct : '' };
+  let signedIn = false; try { signedIn = fs.statSync(path.join(cfgDir(), 'user.json')).size > 20; } catch {}
+  let acct = '';
+  if (signedIn) { const r = await run(['status', '--json', '--offline'], 20000); try { acct = String(JSON.parse(r.out.slice(r.out.indexOf('{'))).account || ''); } catch {} if (/not logged|^<.*>$/i.test(acct)) acct = ''; }
+  return { found: true, exe, signedIn, account: acct };
 }
 const authCode = async code => {
   code = String(code || '').trim().replace(/^"|"$/g, '');
   const m = /"(?:authorizationCode|sid)"\s*:\s*"([^"]+)"/.exec(code); if (m) code = m[1]; // the whole page's answer pasted
   if (!/^[\w-]{16,128}$/.test(code)) return { ok: false, error: 'That does not look like the code from Epic\'s page.' };
   const r = await run(['auth', '--code', code], 60000);
-  return r.ok ? { ok: true } : { ok: false, error: 'Epic did not accept that code (it works once, and for a minute). Open the login page again.' };
+  log('Legendary auth:', r.ok ? 'ok' : 'failed', String(r.out).replace(/\s+/g, ' ').slice(0, 300));
+  return r.ok ? { ok: true } : { ok: false, error: 'Legendary said: ' + (String(r.out).replace(/\s+/g, ' ').trim().slice(-160) || 'nothing') + ' (the code works once, for a minute; open the login page again)' };
 };
 const logout = async () => { const r = await run(['auth', '--delete'], 20000); return { ok: r.ok }; };
 const LOGIN_URL = 'https://legendary.gl/epiclogin';

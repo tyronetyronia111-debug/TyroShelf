@@ -620,9 +620,14 @@ async function buildLibrary() {
   // (Steam art by title only for Epic's store games: a recomp or a program added by hand often shares its name with an
   // unrelated Steam game, "Quarantine" got a puzzle game's cover; they keep the made-up case)
   const pcGame = g => { const sid = STORE_SRC.has(g.source) ? pcgames.steamIdOf(g.title) : null, l = sid ? steamart.local(sid) : {};
-    return { kind: 'steam', source: g.source, id: g.id, title: g.title, ...(sid ? { info: steamart.gameInfo(sid) } : {}), art: { front: fileUrl(pccovers.cover(g.id) || l.front), back: fileUrl(pccovers.cover(g.id, 'back')) || undefined, spine: fileUrl(pccovers.cover(g.id, 'spine')) || undefined, hero: fileUrl(l.hero), icon: g.icon || undefined } }; };
-  if (epic.length) pcShelf = pcShelf.concat(epic.map(pcGame)).sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' }));
+    return { kind: 'steam', source: g.source, id: g.id, title: g.title, ...(g.legendary ? { tracked: true } : {}), ...(sid ? { info: steamart.gameInfo(sid) } : {}), art: { front: fileUrl(pccovers.cover(g.id) || l.front), back: fileUrl(pccovers.cover(g.id, 'back')) || undefined, spine: fileUrl(pccovers.cover(g.id, 'spine')) || undefined, hero: fileUrl(l.hero), icon: g.icon || undefined } }; };
+  // (Tyro-Shelf-20) Epic and HoYoPlay games get a shelf each; the other stores stay on the PC shelf
+  const byTitle = (a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' });
+  const own = src => epic.filter(g => g.source === src);
+  if (epic.length) pcShelf = pcShelf.concat(epic.filter(g => g.source !== 'epic' && g.source !== 'hoyoplay').map(pcGame)).sort(byTitle);
   if (pcShelf.length) shelves.push({ id: 'pc', kind: 'steam', name: 'PC', games: pcShelf });
+  if (own('epic').length) shelves.push({ id: 'epic', kind: 'steam', name: 'Epic Games', games: own('epic').map(pcGame).sort(byTitle) });
+  if (own('hoyoplay').length) shelves.push({ id: 'hoyoplay', kind: 'steam', name: 'HoYoPlay', games: own('hoyoplay').map(pcGame).sort(byTitle) });
   if (mine.length) shelves.push({ id: 'custom', kind: 'steam', name: 'Custom', games: mine.map(pcGame).sort((a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' })) });
   const apps = [];
   for (const a of APPS) { const c = cfg.apps[a.id]; if (!c || !c.enabled || !c.path) continue; apps.push({ kind: 'app', id: 'app-' + a.id, appId: a.id, title: a.name, path: c.path, art: { icon: fileUrl(await iconQuick(c.path)) } }); }
@@ -1433,7 +1438,9 @@ let scriptRun = null;
 async function scriptsBefore(g) { const game = ((cfg.games || {})[g.id] || {}).scripts; scriptRun = { g: { id: g.id, title: g.title, exe: g.exe, source: g.source }, game }; try { await gscripts.before(scriptRun.g, game, cfg.scripts); } catch (e) { log('Game scripts:', e.message); } }
 function scriptsStarted() { if (scriptRun) try { gscripts.afterStart(scriptRun.g, scriptRun.game, cfg.scripts); } catch (e) { log('Game scripts:', e.message); } }
 handle('launch:pc', async ({ id }) => {
-  const g = pcgames.byId(id); if (!g) throw new Error("That game isn't on the shelf any more. The shelf is refreshing; try again in a moment.");
+  let g = pcgames.byId(id);
+  if (!g) { try { await buildLibrary(); } catch (e) { log('Library rebuild for launch:', e.message); } g = pcgames.byId(id); } // (a desktop shortcut can ask before the first scan has finished)
+  if (!g) throw new Error("That game isn't on the shelf any more. The shelf is refreshing; try again in a moment.");
   // through its store's launcher (Epic, and from beta.7 Ubisoft Connect and the EA app: their sign-in, cloud saves, overlay)
   const leg = g.legendary && (cfg.pc || {}).legendary !== false ? legendary.find() : '';
   if (!leg && g.uri && /^(com\.epicgames\.launcher|uplay|origin2):\/\//i.test(g.uri)) { busyCheck(); log('PC launch:', g.source, g.title); return shell.openExternal(g.uri).then(() => ({ external: true })); }
