@@ -938,7 +938,7 @@ function fillDetails(){
   $("dPlay").textContent=g.kind==="rom"||g.kind==="steam"?"Play":"Open";
   $("dInspect").hidden=g.kind!=="rom";$("dManual").hidden=g.kind!=="rom";$("dManual").querySelector("span").textContent=hasManual(g)?"Read manual":"Read booklet"; /* (beta.7: an icon button: only its label changes) */
   $("dEmu").hidden=!(g.kind==="rom"&&s.hasEmulator);$("dEmu").textContent=`Open ${s.emulatorName||"emulator"}`;
-  {const b=$("dBoxArt");if(b)b.hidden=!((g.kind==="rom"&&api.artStudio&&g.file)||(g.kind==="steam"&&api.pcCoverOptions));}{const b=$("dRename");if(b)b.hidden=!(api.renameGame&&((g.kind==="rom"&&g.file)||g.kind==="steam"));}{const b=$("dDiscord");if(b){b.hidden=!(api.gameDiscord&&dcOk(g));const d=gameDiscord(g);b.textContent=d&&d.hide?"Discord: off":"Discord";}}{const b=$("dWindow");if(b){b.hidden=!(api.gameWindow&&g.kind==="steam"&&["quiver","custom","gog","hoyoplay","epic"].includes(g.source));{const ab=$("dActions");if(ab)ab.hidden=!(api.gameActions&&g&&g.kind==="steam"&&!g.notInstalled&&["quiver","custom","gog","hoyoplay","epic"].includes(g.source));const sb=$("dScripts");if(sb)sb.hidden=!(api.gameScripts&&dcOk(g));const hb=$("dShortcut");if(hb)hb.hidden=!(api.shortcutCreate&&g&&(g.kind==="rom"||(g.kind==="steam")));}const w=gameWindowMode(g);b.textContent=w==="borderless"?"Window: borderless":w==="windowed"?"Window: windowed":"Window";}} /* (beta.5: PC games too, through the cover picker) */
+  {const b=$("dBoxArt");if(b)b.hidden=!((g.kind==="rom"&&api.artStudio&&g.file)||(g.kind==="steam"&&api.pcCoverOptions));}{const b=$("dRename");if(b)b.hidden=!(api.renameGame&&((g.kind==="rom"&&g.file)||g.kind==="steam"));}{const b=$("dDiscord");if(b){b.hidden=!(api.gameDiscord&&dcOk(g));const d=gameDiscord(g);b.textContent=d&&d.hide?"Discord: off":"Discord";}}{const b=$("dWindow");if(b){b.hidden=!(api.gameWindow&&g.kind==="steam"&&["quiver","custom","gog","hoyoplay","epic"].includes(g.source));{const ib=$("dInstall");if(ib)ib.hidden=!(api.gameInstall&&g&&g.kind==="steam"&&(g.source==="steam"||g.source==="epic"));const ab=$("dActions");if(ab)ab.hidden=!(api.gameActions&&g&&g.kind==="steam"&&!g.notInstalled&&["quiver","custom","gog","hoyoplay","epic"].includes(g.source));const sb=$("dScripts");if(sb)sb.hidden=!(api.gameScripts&&dcOk(g));const hb=$("dShortcut");if(hb)hb.hidden=!(api.shortcutCreate&&g&&(g.kind==="rom"||(g.kind==="steam")));}const w=gameWindowMode(g);b.textContent=w==="borderless"?"Window: borderless":w==="windowed"?"Window: windowed":"Window";}} /* (beta.5: PC games too, through the cover picker) */
   {const b=$("dCols");if(b)b.hidden=!isGame(g)||g.kind==="app";}
   {const b=$("dChooseManual");if(b){b.hidden=!(g.kind==="rom"&&api.manualStudio&&g.file);b.textContent=hasManual(g)?"Choose manual…":"Find a manual…"}}
   {const b=$("dGameEmu");if(b){const own=g.kind==="rom"?gameEmu(g):"";b.hidden=!(g.kind==="rom"&&api.gameEmulator);b.textContent=own?(emuLabel(own).length>16?emuLabel(own).slice(0,15)+"…":emuLabel(own)):"Emulator";b.title=own?`Runs in ${own} (just this game). Press to change.`:`Runs in the shelf's ${s.emulatorName||"emulator"}. Press to pick a different build for just this game.`;b.classList.toggle("own",!!own)}}
@@ -1723,6 +1723,8 @@ async function launchNow(g,underInsert){if(PV){pvStop();pvBackStop()} /* (beta.7
   if(smoothTest.on)return; // nothing starts while the smoothness test runs
   // (Switch 2 started from somewhere other than Play, e.g. the museum: which build first)
   if(needsBuild(g,g._sh||shelfFor(g))&&!underInsert){const exe=await pickBuild(g);if(exe==null)return;nextBuild={id:g.id,exe}}
+  // (Tyro-Shelf-25) an Epic game you own but haven't installed: the install dialog and the download manager (not a launch)
+  if(g.kind==="steam"&&g.notInstalled&&g.source==="epic"&&g.legendaryApp&&window.TyroTools&&api.dmAdd){toolOpen(()=>TyroTools.install(g));return}
   // (Tyro-Shelf-21) play actions: a game with extra ways to start (a modded version…) asks which one first
   let actKey="";{const acts=g.kind==="steam"&&!underInsert?gameActionsOf(g):[];
     if(acts.length){const k=await pickBuild(g,{title:"Play which version?",first:"default",builds:[{label:g.title,exe:"default",sub:"Normal"},...acts.map((a,i)=>({label:a.name,exe:"a"+i,sub:folderBase(a.exe)}))]});if(k==null)return;actKey=k==="default"?"":k}}
@@ -2104,6 +2106,7 @@ function qsRows(){const ui=qsUi(),r=qsAch(),g=qsGame(),out=[];
   out.push({id:"ach",icon:QS_I.trophy,lbl:"Trophies",val:()=>!RA.on?"Not connected":r&&r.total?`${r.earned} / ${r.total}`+(RA.profile?` · ${RA.profile.points.toLocaleString()} pts`:""):RA.profile?`${RA.profile.points.toLocaleString()} points`:"",
     lines:()=>!RA.on?[{k:"note",note:"Sign in once and Tyro-Shelf tracks every unlock."},{k:"go",opts:[["rasetup","Connect RetroAchievements ›"]],big:1}]:[{k:"achinfo",info:1},...(r&&r.total?[{k:"go",opts:[["achg","See this game's achievements ›"]],big:1}]:[])]});
   out.push({id:"mus",icon:QS_I.museum,lbl:"Museum",val:()=>"Walk your collection",go:1});
+  if(api.dmList&&window.TyroTools){out.push({id:"dlm",icon:QS_I.info,lbl:"Downloads",val:()=>{const n=TyroTools.count();return n?`${n} in progress`:"Epic installs"},go:1});out.push({id:"stor",icon:QS_I.info,lbl:"Storage",val:()=>"Games by drive",go:1})}
   if(ANDROID)qsAndroidOrder(out,ui); // (0.3.2) the Thor's order: Museum, Art Studio, Trophies first; then the looks, sounds and sorting
   out.push({sep:1});
   if(api.updateCheck&&!ANDROID)out.push({id:"upd",icon:QS_I.info,lbl:"Updates",val:qsUpdVal}); // (beta.4) check for a newer beta from here
@@ -2246,6 +2249,8 @@ function qsPick(){const x=qm.rows[qm.r];if(!x)return;const r=x.r;
   if(r.id==="vol"){const v=curVol();setVol(v>0?0:(volPrev||.7));if(curVol()>0)play_("tick",{dir:1});qsSoft();return}
   if(r.id==="set"){qmClose(true);play_("open");Setup.open();return}
   if(r.id==="mus"){qmClose(true);openMuseum();return}
+  if(r.id==="dlm"){qmClose(true);toolOpen(()=>TyroTools.openDownloads());return}
+  if(r.id==="stor"){qmClose(true);toolOpen(()=>TyroTools.openStorage());return}
   if(r.id==="studio"){const g=qsGame();qmClose(true);if(g&&ANDROID){play_("panel");Setup.open({page:"artstudio",systemId:shelfFor(g).id});return} /* (Android: the console's whole studio) */if(g)artStudioFor(g);return}
   if(r.id==="cz3d"){const e=qsCzShelf();qmClose(true);play_("open");if(e)custSel=e[0];czPick=null;openCustomize();return}
   if(!r.lines)return;if(qm.sub===qm.r){qsCollapse();return}
@@ -3890,12 +3895,21 @@ function shortcutGo(id){if(!id)return;let n=0;const t=setInterval(()=>{n++;if(n>
   if(mode!=="browse"||!shelves.length)return;let hit=null;for(const sh of shelves){const f=(sh.items||[]).find(x=>x&&x.id===id&&(x.kind==="rom"||x.kind==="steam"));if(f){hit=f;if(!f._sh)f._sh=sh;break}}
   if(!hit)return;clearInterval(t);try{api.log&&api.log("shortcut: starting "+hit.title)}catch{}launchNow(hit)},500)}
 api.onShortcut&&api.onShortcut(shortcutGo);api.shortcutTake&&Promise.resolve(api.shortcutTake()).then(shortcutGo).catch(()=>{});
+// (Tyro-Shelf-25) the install dialog, Download Manager and Storage screens (tools.js): the shelf waits (mode "tools") until they close
+function toolOpen(fn){if(mode==="tools")return;const prev=mode==="details"?"browse":mode;if(mode==="details")closeDetails(true);qmClose&&qmClose(true);play_("panel");mode="tools";TyroTools.setReturn(()=>{mode=prev});fn()}
+window.__toolOpen=k=>{let n=0;const go=()=>{if(mode==='setup'&&n++<25)return setTimeout(go,120);toolOpen(()=>k==='dm'?TyroTools.openDownloads():TyroTools.openStorage())};go()};
+api.onDmDone&&api.onDmDone(d=>toast(`${d&&d.title||"Game"} finished downloading`));
 // (Tyro-Shelf-21) Details → Play actions (from Playnite's Actions tab): other ways to start this game, e.g. a modded version
 const gameActionsOf=g=>{const o=g&&g.kind==="steam"&&cfgInfo&&cfgInfo.config.games&&cfgInfo.config.games[g.id];return o&&Array.isArray(o.actions)?o.actions:[]};
 const folderBase=p=>String(p||"").split(/[\\/]/).filter(Boolean).slice(-1)[0]||"";
 (function(){const c=$("dActEnd");if(!c||$("dActions"))return;const b=document.createElement("button");b.className="btn";b.type="button";b.id="dActions";b.textContent="Play actions";b.title="Add other ways to start this game (a modded version, another launcher) and choose one when you press Play";
   b.addEventListener("click",()=>{const g=curGame();if(!api.gameActions||!g||g.kind!=="steam"||g.notInstalled||!["quiver","custom","gog","hoyoplay","epic"].includes(g.source))return;
     closeDetails(true);play_("panel");Setup.open({page:"actionsgame",ref:{id:g.id},title:g.title,actions:gameActionsOf(g)})});c.before(b)})();
+// (Tyro-Shelf-25) Details → Installation: say a Steam or Epic game is installed (or not), and where it is
+const gameInstOf=g=>{const o=g&&cfgInfo&&cfgInfo.config.games&&cfgInfo.config.games[g.id];return{state:o&&o.installState||"",dir:o&&o.installDir||""}};
+(function(){const c=$("dActEnd");if(!c||$("dInstall"))return;const b=document.createElement("button");b.className="btn";b.type="button";b.id="dInstall";b.textContent="Installation";b.title="Tell Tyro-Shelf whether this game is installed, and where";
+  b.addEventListener("click",()=>{const g=curGame();if(!api.gameInstall||!g||g.kind!=="steam"||!(g.source==="steam"||g.source==="epic"))return;
+    closeDetails(true);play_("panel");Setup.open({page:"installgame",ref:{id:g.id},title:g.title,epic:g.source==="epic",inst:gameInstOf(g)})});c.before(b)})();
 // the Details panel's "Box art" button (1.67): opens Settings → Art & manuals straight at this game's mix (front, back,
 // spine and disc looks, Pick exact for any part); B there goes up to the console's games, then the Art page
 (function(){const c=$("dActEnd");if(!c||$("dBoxArt"))return;const b=document.createElement("button");b.className="btn";b.type="button";b.id="dBoxArt";b.textContent="Box art";b.title="Choose this game's box art: front, back, spine and disc";

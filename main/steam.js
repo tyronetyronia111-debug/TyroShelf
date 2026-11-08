@@ -106,6 +106,7 @@ function scanSteam(steamPath, opts = {}) {
         appid,
         title: name,
         sizeBytes: +(vdf.get(st, 'SizeOnDisk') || 0),
+        dirPath: path.join(apps, 'common', String(vdf.get(st, 'installdir') || '')),
         minutes: s.minutes || 0,
         lastPlayed: s.lastPlayed || +(vdf.get(st, 'LastPlayed') || 0),
         art: findArt(steamPath, appid)

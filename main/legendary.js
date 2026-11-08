@@ -132,4 +132,30 @@ function consoleRun(args, name) {
   require('electron').shell.openPath(f); return true;
 }
 
-module.exports = { owned, refreshOwned, signedInFile, consoleRun, init, setPath, find, installed, status, authCode, logout, download, LOGIN_URL, exeName };
+// ---- finding games already on disk (Playnite's Legendary plugin does the same): a folder you choose holds the games; a game folder
+// there (named like the game, with Epic's .egstore inside) is registered with `legendary import`, which makes it "installed"
+const normT = t => String(t || '').toLowerCase().replace(/[™®©]/g, '').replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '');
+function findInstall(root, title) {
+  const want = normT(title); if (!want || !root) return '';
+  const isDir = p => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+  const cands = [root]; try { for (const e of fs.readdirSync(root, { withFileTypes: true })) if (e.isDirectory() && !e.name.startsWith('.')) cands.push(path.join(root, e.name)); } catch { return ''; }
+  for (const d of cands) { const n = normT(path.basename(d)); if (n && (n === want || (n.length >= 5 && (want.includes(n) || n.includes(want)))) && isDir(path.join(d, '.egstore'))) return d; }
+  return '';
+}
+async function importGame(app, dirPath) {
+  if (!/^[\w.-]+$/.test(String(app))) return false;
+  const r = await run(['import', '--disable-check', app, dirPath], 120000);
+  log('Legendary import:', app, r.ok ? 'ok' : 'failed', String(r.out).replace(/\s+/g, ' ').slice(-200));
+  return r.ok;
+}
+// download and install sizes for a game (`legendary info --json`), or nulls when this build doesn't say
+async function sizes(app) {
+  if (!/^[\w.-]+$/.test(String(app))) return { download: null, install: null };
+  const r = await run(['info', app, '--json'], 60000); let j; try { j = JSON.parse(r.stdout.slice(r.stdout.indexOf('{'))); } catch { return { download: null, install: null }; }
+  let dl = null, inst = null; const walk = (o, d) => { if (!o || typeof o !== 'object' || d > 4) return; for (const [k, v] of Object.entries(o)) { if (typeof v === 'number') { if (/download.?size/i.test(k) && dl == null) dl = v; else if (/(disk|install).?size/i.test(k) && inst == null) inst = v; } else walk(v, d + 1); } };
+  walk(j, 0); return { download: dl, install: inst };
+}
+// installed games with the size Legendary recorded (for the Storage screen)
+function installedSizes() { try { const j = JSON.parse(fs.readFileSync(path.join(cfgDir(), 'installed.json'), 'utf8')); return Object.values(j || {}).filter(v => v && !v.is_dlc).map(v => ({ app: String(v.app_name), size: +v.install_size || 0, dir: String(v.install_path || '') })); } catch { return []; } }
+
+module.exports = { findInstall, importGame, sizes, installedSizes, run, normT, owned, refreshOwned, signedInFile, consoleRun, init, setPath, find, installed, status, authCode, logout, download, LOGIN_URL, exeName };

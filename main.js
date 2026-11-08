@@ -34,6 +34,8 @@ const { scanSteam, isTool } = require('./main/steam');
 const steamart = require('./main/steamart');
 const legendary = require('./main/legendary'); // (Tyro-Shelf-19) Epic games through Legendary
 const gscripts = require('./main/gamescripts'); // (Tyro-Shelf-19) scripts and programs opened along with a game
+const downloads = require('./main/downloads'); // (Tyro-Shelf-25) Epic download manager
+const storage = require('./main/storage'); // (Tyro-Shelf-25) storage screen
 const steamowned = require('./main/steamowned'); // (Tyro-Shelf-24) owned and family-shared Steam games
 const pcgames = require('./main/pcgames'); // (beta.4) Epic, Quiver Launcher and games added by hand
 const pccovers = require('./main/pccovers'); // (beta.5) choosing a PC game's cover (SteamGridDB, Steam's own, your own)
@@ -585,7 +587,7 @@ function iconQuick(exe) {
 // (beta.7) store games: real store titles, so their covers come from the Steam app with the same name (not Quiver's or
 // hand-added programs: those often share a name with an unrelated game)
 const STORE_SRC = new Set(['epic', 'gog', 'ubisoft', 'ea', 'xbox', 'hoyoplay']);
-let lgTried = 0, ownTried = 0, steamNotInst = new Set();
+let epicTried = new Set(), lgTried = 0, ownTried = 0, steamNotInst = new Set();
 async function buildLibrary() {
   const shelves = [];
   for (const def of CONSOLES) {
@@ -614,6 +616,11 @@ async function buildLibrary() {
     if (cfg.steam.family) for (const g of c.shared) add(g, true);
     if (steamowned.detectId && (Date.now() - c.at > 12 * 3600e3 || (sid && c.id !== sid)) && Date.now() - ownTried > 30 * 60e3) { ownTried = Date.now(); steamowned.refresh({ key: cfg.steam.apiKey, steamId: sid, family: cfg.steam.family }).then(r => { if (r && r.ok && alive()) win.webContents.send('library:changed', { steam: 1 }); }); }
   }
+  // (Tyro-Shelf-25) "Installation status" set by hand (Details → Installation) wins over what was found
+  const ist = id => ((cfg.games || {})[id] || {}).installState || '';
+  for (const g of pcShelf) { const st = ist(g.id); if (!st) continue;
+    if (st === 'installed' && g.notInstalled) { delete g.notInstalled; delete g.shared; steamNotInst.delete(String(g.appid)); }
+    else if (st === 'notinstalled' && !g.notInstalled) { g.notInstalled = true; steamNotInst.add(String(g.appid)); } }
   // (beta.4) Epic's installs join the PC shelf; Quiver Launcher's apps and games added by hand get the Custom shelf. They
   // are PC games with a source (kind 'steam' keeps every shelf feature); covers come from the Steam app their title
   // matched (pcgames.matchSteam, never an appid the screen could launch: Play goes through launch:pc by id)
@@ -622,7 +629,12 @@ async function buildLibrary() {
   if (pc.epic !== false) try {
     if (pc.legendary !== false && legendary.find() && Date.now() - legendary.owned().at > 12 * 3600e3 && Date.now() - lgTried > 30 * 60e3 && (lgTried = Date.now())) legendary.refreshOwned().then(ok => { if (ok && alive()) win.webContents.send('library:changed', { legendary: 1 }); }); // (the owned list, in the background)
     const eg = pc.legendary !== false ? pcgames.legendaryGames(legendary) : [], lid = new Set(eg.map(g => g.id)); // Legendary's installs win over the Epic launcher's entry for the same game
+    // (Tyro-Shelf-25) games you own that Legendary doesn't know are installed: look in the Epic games folder you chose (Settings → PC)
+    // and register what is there (`legendary import`, like Playnite's Legendary add-on); a game's own folder (Details → Installation) too
+    if (legendary.find()) { const jobs = []; for (const g of eg) { if (!g.notInstalled) continue; const own = ((cfg.games || {})[g.id] || {}), dir = (ist(g.id) === 'installed' && own.installDir) || (pc.epicDir && legendary.findInstall(pc.epicDir, g.title)); const k = g.legendary + '|' + dir; if (dir && !epicTried.has(k)) { epicTried.add(k); jobs.push([g.legendary, dir]); } }
+      if (jobs.length) (async () => { let n = 0; for (const [app, dir] of jobs) if (await legendary.importGame(app, dir)) n++; if (n && alive()) win.webContents.send('library:changed', { legendary: 1 }); })(); }
     epic.push(...pcgames.epicGames().filter(g => !lid.has(g.id)), ...eg);
+    for (const g of epic) { const st = ist(g.id); if (g.source !== 'epic' || !g.legendary) continue; if (st === 'installed' && g.notInstalled) g.notInstalled = false; else if (st === 'notinstalled' && !g.notInstalled) g.notInstalled = true; }
   } catch (e) { log('Epic library', e.message); }
   // (beta.7) GOG Galaxy, Ubisoft Connect, the EA app and Xbox / Game Pass join the PC shelf too, like Epic (store games)
   try { epic.push(...await pcgames.storeGames(pc)); } catch (e) { log('PC stores', e.message); }
@@ -633,7 +645,7 @@ async function buildLibrary() {
   // (Steam art by title only for Epic's store games: a recomp or a program added by hand often shares its name with an
   // unrelated Steam game, "Quarantine" got a puzzle game's cover; they keep the made-up case)
   const pcGame = g => { const sid = STORE_SRC.has(g.source) ? pcgames.steamIdOf(g.title) : null, l = sid ? steamart.local(sid) : {};
-    return { kind: 'steam', source: g.source, id: g.id, title: g.title, ...(g.legendary ? { tracked: true } : {}), ...(g.source === 'epic' && !g.notInstalled ? { installed: true } : {}), ...(g.notInstalled ? { notInstalled: true, region: 'Not installed' } : {}), ...(sid ? { info: steamart.gameInfo(sid) } : {}), art: { front: fileUrl(pccovers.cover(g.id) || l.front), back: fileUrl(pccovers.cover(g.id, 'back')) || undefined, spine: fileUrl(pccovers.cover(g.id, 'spine')) || undefined, hero: fileUrl(l.hero), icon: g.icon || undefined } }; };
+    return { kind: 'steam', source: g.source, id: g.id, title: g.title, ...(g.legendary ? { tracked: true, legendaryApp: g.legendary } : {}), ...(g.source === 'epic' && !g.notInstalled ? { installed: true } : {}), ...(g.notInstalled ? { notInstalled: true, region: 'Not installed' } : {}), ...(sid ? { info: steamart.gameInfo(sid) } : {}), art: { front: fileUrl(pccovers.cover(g.id) || l.front), back: fileUrl(pccovers.cover(g.id, 'back')) || undefined, spine: fileUrl(pccovers.cover(g.id, 'spine')) || undefined, hero: fileUrl(l.hero), icon: g.icon || undefined } }; };
   // (Tyro-Shelf-20) Epic and HoYoPlay games get a shelf each; the other stores stay on the PC shelf
   const byTitle = (a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' });
   const own = src => epic.filter(g => g.source === src);
@@ -790,7 +802,7 @@ ipcMain.on('home:meta', (e, m) => { if (!m || typeof m !== 'object') return; con
   homemenu.setMeta({ title: str(m.title), cover: str(m.cover), accent: /^#[0-9a-f]{3,8}$/i.test(m.accent || '') ? m.accent : undefined, glyphs: glyphsOf(m.glyphs), layout: cfg.ui.homeLayout === 'center' ? 'center' : 'side' }); });
 emucfg.init(log);
 modelfind.init(log);
-app.on('before-quit', () => { try { presence.shutdown(); } catch {} if (tbHidden) { tbHidden = false; try { fs.unlinkSync(tbMark()); } catch {} /* (Tyro-Shelf-11) marker first: the watchdog re-hid the taskbar every 100 ms while it existed, and the show below takes ~1 s */ padwatch.stop(); padwatch.taskbarSync(true); log('Taskbar back (Boxshelf quitting)'); } /* (beta.6) */ clearTimeout(scaleT); historyEnd(); companion.stop().catch(() => {}); /* the phone companion's server and its connections */ padwatch.stop(); wiimote.stop(); homemenu.end(); modelfind.stop(); clearQuitCover(); clearTimeout(focusOnlyT); if (coverTimer) { clearInterval(coverTimer.keep); clearTimeout(coverTimer); coverTimer = null; }
+app.on('before-quit', () => { try { downloads.stopAll(); } catch {} try { presence.shutdown(); } catch {} if (tbHidden) { tbHidden = false; try { fs.unlinkSync(tbMark()); } catch {} /* (Tyro-Shelf-11) marker first: the watchdog re-hid the taskbar every 100 ms while it existed, and the show below takes ~1 s */ padwatch.stop(); padwatch.taskbarSync(true); log('Taskbar back (Boxshelf quitting)'); } /* (beta.6) */ clearTimeout(scaleT); historyEnd(); companion.stop().catch(() => {}); /* the phone companion's server and its connections */ padwatch.stop(); wiimote.stop(); homemenu.end(); modelfind.stop(); clearQuitCover(); clearTimeout(focusOnlyT); if (coverTimer) { clearInterval(coverTimer.keep); clearTimeout(coverTimer); coverTimer = null; }
   romWatchers.forEach(w => { try { w.close(); } catch {} }); romWatchers = []; clearTimeout(romWatchT); clearTimeout(iconLateT); Object.values(retestT).forEach(clearTimeout); if (moving) clearTimeout(moving.t); });
 function handle(name, fn) {
   ipcMain.handle(name, async (e, ...args) => {
@@ -1550,6 +1562,34 @@ handle('legendary:download', async () => { const r = await legendary.download();
 handle('legendary:login', () => { shell.openExternal(legendary.LOGIN_URL); return { ok: true }; });
 handle('legendary:code', async ({ code }) => { const r = await legendary.authCode(code); if (r.ok) await legendary.refreshOwned(); if (r.ok && alive()) win.webContents.send('library:changed', { legendary: 1 }); return r; });
 handle('legendary:logout', () => legendary.logout());
+// ---- (Tyro-Shelf-25) the Epic download manager (main/downloads.js); the screen names games by Legendary's app name only
+handle('dm:list', () => downloads.list());
+handle('dm:info', ({ app, dir }) => downloads.info({ app, dir }));
+handle('dm:add', o => { const id = downloads.add(o || {}); return { id }; });
+handle('dm:do', ({ act, id }) => { const f = { pause: downloads.pause, resume: downloads.resume, stop: downloads.stop, remove: downloads.remove, up: i => downloads.move(i, -1), down: i => downloads.move(i, 1) }[act]; if (act === 'clear') downloads.clearDone(); else if (f) f(id); return { ok: true }; });
+handle('dm:defaultDir', () => ((cfg.pc || {}).epicDir || '') || path.join(process.env.SystemDrive ? process.env.SystemDrive + '\\' : require('os').homedir(), 'Games', 'Epic'));
+// ---- (Tyro-Shelf-25) Details → Installation: tell Tyro-Shelf a game is installed (or not), and where
+handle('game:install', async ({ id, state, dir }) => {
+  const key = String(id || ''); if (!key || key.length > 2048) throw new Error('Unknown game.');
+  const st = state === 'installed' || state === 'notinstalled' ? state : '', games = { ...(cfg.games || {}) }, cur = { ...(games[key] || {}) };
+  if (st) cur.installState = st; else delete cur.installState;
+  const d = typeof dir === 'string' ? dir.trim().slice(0, 1024) : ''; if (d) cur.installDir = d; else delete cur.installDir;
+  if (Object.keys(cur).length) games[key] = cur; else delete games[key];
+  applyCfg({ ...cfg, games }); let imported = null;
+  const g = pcgames.byId(key); if (g && g.legendary && st === 'installed' && d && legendary.find()) imported = await legendary.importGame(g.legendary, d);
+  return { ok: true, imported };
+});
+// ---- (Tyro-Shelf-25) the Storage screen: every installed game, its size and place, per drive
+handle('storage:scan', async ({ force }) => {
+  const games = [], seen = new Set(), add = g => { if (g.dir && !seen.has(g.id)) { seen.add(g.id); games.push(g); } };
+  if (cfg.steam.enabled && cfg.steam.path) for (const g of scanSteam(cfg.steam.path, { hideTools: false })) add({ id: g.id, name: ownTitle(g.id) || g.title, source: 'Steam', dir: g.dirPath, size: g.sizeBytes });
+  const legSz = new Map(legendary.installedSizes().map(x => [x.app, x]));
+  for (const g of pcgames.allGames()) { if (g.notInstalled) continue; const l = g.legendary && legSz.get(g.legendary);
+    const SRC = { epic: 'Epic Games', gog: 'GOG', hoyoplay: 'HoYoPlay', ubisoft: 'Ubisoft', ea: 'EA', xbox: 'Xbox', quiver: 'Quiver', custom: 'Custom' };
+    const dir = l && l.dir ? l.dir : (g.exe ? path.dirname(g.exe) : ''); if (!dir || /^[A-Za-z]:\\?$/.test(dir)) continue; add({ id: g.id, name: ownTitle(g.id) || g.title, source: SRC[g.source] || 'PC', dir, size: l ? l.size : 0 }); }
+  for (const sh of (lastLib || [])) if (sh && sh.kind === 'console' && Array.isArray(sh.games)) for (const g of sh.games) if (g.file && g.sizeBytes > 0 && !g.notInstalled) add({ id: g.id, name: g.title, source: sh.name || sh.id, dir: g.file, size: g.sizeBytes });
+  const r = await storage.scan(games, !!force); return r;
+});
 handle('legendary:authwin', () => ({ ok: legendary.consoleRun(['auth'], 'sign-in') })); // Legendary's own sign-in in a console window (opens Epic's page, asks for the code there)
 handle('legendary:refresh', async () => { const ok = await legendary.refreshOwned(); if (alive()) win.webContents.send('library:changed', { legendary: 1 }); return { ok }; });
 handle('game:actions', ({ id, actions }) => {
@@ -2394,7 +2434,7 @@ function startUp() {
   stremio.init({ log, fanartKey: () => (cfg && cfg.keys && cfg.keys.fanart) || '', artDir: path.join(app.getPath('userData'), 'stremio-art'), fetchBuf: async url => { const r = await net.fetch(url); if (r.status === 404) return null; if (!r.ok) throw new Error('HTTP ' + r.status); return Buffer.from(await r.arrayBuffer()); } }); // null = really not there; other failures throw, so nothing "missing" is cached for them
   icons.init(app.getPath('userData'), log);
   x360.init(app.getPath('userData'), log);
-  steamart.init(app.getPath('userData'), log); pcgames.init(app.getPath('userData'), log); gscripts.init(log); steamowned.init(log, app.getPath('userData')); legendary.init(log, path.join(app.getPath('userData'), 'legendary')); legendary.setPath(cfg && cfg.pc && cfg.pc.legendaryPath); pccovers.init({ dataDir: app.getPath('userData'), log, placed: d => artVer.set(path.resolve(d).toLowerCase(), Date.now()), fileUrl, fetchImage, steamgrid: require('./main/steamgrid'), steamCover: id => steamart.local(id).front, match: covers.sgMatch });
+  steamart.init(app.getPath('userData'), log); pcgames.init(app.getPath('userData'), log); gscripts.init(log); steamowned.init(log, app.getPath('userData')); storage.init(app.getPath('userData')); downloads.init({ dir: path.join(app.getPath('userData'), 'legendary'), log, legendary, onChange: l => { if (alive()) win.webContents.send('dm:update', l); }, onDone: it => { if (alive()) { win.webContents.send('library:changed', { legendary: 1 }); win.webContents.send('dm:done', { title: it.title }); } } }); legendary.init(log, path.join(app.getPath('userData'), 'legendary')); legendary.setPath(cfg && cfg.pc && cfg.pc.legendaryPath); pccovers.init({ dataDir: app.getPath('userData'), log, placed: d => artVer.set(path.resolve(d).toLowerCase(), Date.now()), fileUrl, fetchImage, steamgrid: require('./main/steamgrid'), steamCover: id => steamart.local(id).front, match: covers.sgMatch });
   wiiumanual.init(app.getPath('userData'), log);
   ra.init(app.getPath('userData'), log); ra.setCredentials(cfg.ra && cfg.ra.enabled !== false ? cfg.ra.user : '', cfg.ra && cfg.ra.key);
   manuals.init(log); archive.init(log); manuals.setStore(path.join(app.getPath('userData'), 'manual-auto.json')); manuals.setRejectStore(path.join(app.getPath('userData'), 'manual-rejects.json'));

@@ -41,6 +41,12 @@ Tyro-Shelf doesn't include or download any games, BIOS files or keys. You supply
 - **Whole Steam library** (Settings → PC): games you own but haven't installed get a NOT INSTALLED tag and Play opens Steam's install
   window; Family Sharing games (add family members' Steam IDs) get FAMILY SHARED. It uses Steam's public Web API with your own free
   key (never built in). Epic games show INSTALLED / NOT INSTALLED too.
+- **Epic installs with a download manager** (Download Manager in the quick menu / Settings → PC): Play on an Epic game you own but
+  haven't installed opens an install dialog (folder, DLCs, advanced options, sizes, free space) and queues it with progress, speed,
+  pause / resume / stop. The idea is from Playnite's Unified Download Manager add-on (MIT); the downloading is done by Legendary.
+- **Epic games folder + installation status**: games found in a folder you choose are registered with Legendary and marked installed;
+  Details → Installation sets a Steam or Epic game to installed / not installed by hand, so Play launches it instead of offering to install.
+- **Storage** (quick menu / Settings → PC): every installed game with its size, source and folder, per drive, with a games / other / free bar.
 - **Desktop shortcuts** (Details → Desktop shortcut): a `.lnk` on your desktop that starts Tyro-Shelf and then that game.
 - **HoYoPlay games** (Genshin Impact, Honkai: Star Rail, Zenless Zone Zero, Honkai Impact 3rd) on the PC shelf, read from HoYoPlay's
   install list. Programs that insist on administrator rights get a normal Windows prompt when started.
@@ -79,6 +85,7 @@ An exe built any other way (not by this workflow) has no repository set, so its 
 ## Credits and licence
 
 - **Playnite** (MIT, <https://github.com/JosefNemec/Playnite>): the idea of per-game scripts and desktop shortcuts. No Playnite code is used.
+- **Unified Download Manager** and **Storage** add-ons for Playnite (MIT): the ideas for the download manager and storage screens. No code used.
 - **HoYoPlay Library** add-on by darklinkpower (MIT, <https://github.com/darklinkpower/PlayniteExtensionsCollection>): where HoYoPlay keeps its install list. Rewritten, no code used.
 - **Legendary** by derrod / hawkeye116477 (GPL-3.0, <https://github.com/derrod/legendary>): downloaded from GitHub only when you ask; not part of this repository.
 - **Boxshelf** by sassiestrhihno: the app this is built on (GPL-3.0). Original: <https://github.com/sassiestrhihno/boxshelf-beta>

@@ -167,6 +167,9 @@ function build(){
     {t:"action",label:"Epic sign-in",btn:()=>lgSt&&lgSt.signedIn?"Sign out":"Sign in",info:"Opens Epic's login page. Copy the code it shows (the authorizationCode value), then paste it in the box that appears. Tyro-Shelf never sees your password; Legendary keeps the sign-in.",ns:true,keys:"legendary epic sign in login code",when:()=>pcOn("legendary")&&!!(lgSt&&lgSt.found),run:lgSign,sub:()=>lgSt&&lgSt.signedIn?{text:lgSt.account?"Signed in as "+lgSt.account:"Signed in"}:{text:"Not signed in",cls:"warn"}},
     {t:"action",label:"Sign in in a window",btn:"Open",info:"If pasting the code below does nothing: opens Legendary's own sign-in in a console window. It opens Epic's page and asks for the code there. Then press Check on the Legendary row.",ns:true,keys:"legendary epic sign in window console",when:()=>pcOn("legendary")&&!!(lgSt&&lgSt.found&&!lgSt.signedIn),run:()=>{api.legendaryAuthWindow&&api.legendaryAuthWindow();toast("Sign-in window opened")}},
     {t:"action",label:"Epic library",btn:"Refresh",info:"Reads the games your Epic account owns, so the Epic Games shelf can show the ones that aren't installed yet (Play opens Legendary's install window). Needs sign-in.",ns:true,keys:"legendary epic library refresh owned",when:()=>pcOn("legendary")&&!!(lgSt&&lgSt.signedIn),run:async()=>{toast("Reading your Epic library…");const r=await Promise.resolve(api.legendaryRefresh()).catch(()=>({ok:false}));toast(r&&r.ok?"Epic library updated":"Couldn't read the Epic library (see the log)");}},
+    F("Epic games folder","pc.epicDir","folder","A folder that holds your Epic games (each game in its own folder). Games you own that are found there are marked installed, like Playnite's Legendary add-on. The folder needs the .egstore folder Epic puts in each game.",{rescan:true,want:"folder",ph:"Optional",keys:"epic games folder scan installed directory legendary import",when:()=>pcOn("legendary")}),
+    {t:"action",label:"Download manager",btn:"Open",info:"The Epic games being downloaded and installed.",ns:true,keys:"download manager epic installs",run:()=>{try{Setup.close()}catch{}setTimeout(()=>window.__toolOpen&&window.__toolOpen("dm"),150)}},
+    {t:"action",label:"Storage",btn:"Open",info:"Every installed game with its size and where it lives, per drive.",ns:true,keys:"storage disk space size games drive",run:()=>{try{Setup.close()}catch{}setTimeout(()=>window.__toolOpen&&window.__toolOpen("storage"),150)}},
     X("Epic code","","Paste the code from Epic's login page here and press Enter.",{get:()=>"",set:v=>lgCode(v),nosave:true,live:v=>lgCode(v),ns:true,when:()=>pcOn("legendary")&&!!(lgSt&&lgSt.found&&!lgSt.signedIn),keys:"legendary epic code paste"}),
     T("Show installed HoYoPlay games","pc.hoyoplay",true,"Genshin Impact, Honkai: Star Rail, Zenless Zone Zero and Honkai Impact 3rd, read from HoYoPlay's install list. Tyro-Shelf starts the game's own program. Idea from the HoYoPlay Library add-on for Playnite (MIT).",{rescan:true,keys:"hoyoplay hoyoverse genshin star rail zenless honkai mihoyo",sub:()=>pcCount("hoyoplay")}),
     H("Scripts for every game"),
@@ -974,6 +977,14 @@ async function dcSave(reset){const s=dcState;if(!s||!api.gameDiscord)return;
 let wmState=null;
 // (Tyro-Shelf-19) Details → Scripts: scripts before start / after start / after exit (each can also run the global one from
 // Settings → PC) and programs opened along with the game (the idea from Playnite's Scripts tab)
+let inState=null;
+function inRows(){const st=inState;if(!st)return [];const R=st.rows;
+  const save=async()=>{try{const r=await api.gameInstall({id:st.ref.id,state:st.s,dir:st.dir});const g=(info&&info.config&&info.config.games)||(cfg&&cfg.games);if(g){const k=st.ref.id;g[k]={...(g[k]||{})};if(st.s)g[k].installState=st.s;else delete g[k].installState;if(st.dir)g[k].installDir=st.dir;else delete g[k].installDir}
+    toast(r&&r.imported===true?"Saved, and Legendary now knows where it is":r&&r.imported===false?"Saved (Legendary couldn't register that folder: it needs Epic's .egstore folder inside)":"Saved");shelf("refresh",true)}catch(e){toast(errMsg(e));play("error")}bump()};
+  if(!R.s)R.s={t:"choice",label:"Installation status",opts:[["auto","Automatic"],["installed","Installed"],["notinstalled","Not installed"]],d:"auto",get:()=>st.s||"auto",set:v=>{st.s=v==="installed"||v==="notinstalled"?v:"";save()},nosave:true,ns:true,info:"Automatic: Tyro-Shelf decides from what it finds. Installed: Play starts the game even if it wasn't found. Not installed: Play offers to install it."};
+  const L=[R.s];
+  if(st.epic){if(!R.d)R.d=F("Install folder","","folder","Where this Epic game is. With the status on Installed, Legendary is told about the folder (it needs Epic's .egstore folder inside).",{get:()=>st.dir,set:v=>{st.dir=String(v||"");save()},nosave:true,ns:true,want:"folder",ph:"Optional"});L.push(R.d)}
+  return L}
 let acState=null,acT=null;
 function acRows(){const st=acState;if(!st)return [];const R=st.rows,L=[];
   st.a.forEach((a,i)=>{const k="x"+i;
@@ -1245,6 +1256,9 @@ function route(page,o){if(!page)return;o=o||{};
   if(page==="discordgame"&&o.ref){dcState={ref:o.ref,title:String(o.title||""),d:{...(o.discord||{})}};
     MORE.discordgame={id:"discordgame",name:`Discord: ${dcState.title}`.slice(0,60),lead:"How this game shows on your Discord profile while you play it. Turn Discord on in Settings → System first.",rows:[{t:"dyn",fn:dcRows}]};
     goSecId(o.ref.systemId?"consoles":(/^(steam|epic)-/.test(String(o.ref.id||""))?"pc":"custom"));focus="page";rowI=0;openSub({kind:"more",id:"discordgame"});return}
+  if(page==="installgame"&&o.ref){inState={ref:o.ref,title:String(o.title||""),epic:!!o.epic,s:o.inst&&o.inst.state||"",dir:o.inst&&o.inst.dir||"",rows:{}};
+    MORE.installgame={id:"installgame",name:`Installation: ${inState.title}`.slice(0,60),lead:"Tell Tyro-Shelf whether this game is installed. Set to Installed, Play starts it instead of offering to install it.",rows:[{t:"dyn",fn:inRows}]};
+    goSecId("pc");focus="page";rowI=0;openSub({kind:"more",id:"installgame"});return}
   if(page==="actionsgame"&&o.ref){acState={ref:o.ref,title:String(o.title||""),a:(o.actions||[]).map(x=>({...x})),rows:{}};
     MORE.actionsgame={id:"actionsgame",name:`Play actions: ${acState.title}`.slice(0,60),lead:"Other ways to start this game. With any here, Play asks which version to start: the normal one or one of these.",rows:[{t:"dyn",fn:acRows}]};
     goSecId(/^(steam|epic|hoyo)-/.test(String(o.ref.id||""))?"pc":"custom");focus="page";rowI=0;openSub({kind:"more",id:"actionsgame"});return}
