@@ -2,9 +2,13 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const { shell } = require('electron');
+const fs = require('fs');
 const { isFile, expand } = require('./paths');
 
 let running = null;
+// a program whose manifest asks for administrator (requireAdministrator) can't be started by a normal process: Windows refuses
+// it. Only looked for after such a refusal; the program is then started through PowerShell's -Verb RunAs (the UAC prompt)
+function needsAdmin(exe) { try { if (fs.statSync(exe).size > 600e6) return false; return fs.readFileSync(exe).includes('requireAdministrator'); } catch { return false; } }
 
 // Split an options string like  -b -e "{rom}"  into arguments, filling in {rom}.
 function buildArgs(template, rom) {
@@ -34,7 +38,20 @@ function start(exe, args, onExit, env, isEmu) { // env: the emulator's own envir
   const finish = info => { if (done) return; done = true; running = null; onExit({ ...info, ms: Date.now() - started }); };
   child.on('spawn', () => { spawned = true; });
   // failedToStart: the program never ran (EACCES, a bad exe, blocked by antivirus), so it wasn't a play
-  child.on('error', err => finish({ code: -1, error: err.message, failedToStart: !spawned }));
+  child.on('error', err => {
+    if (!spawned && process.platform === 'win32' && !isEmu && ['UNKNOWN', 'EACCES'].includes(err.code) && needsAdmin(exe)) {
+      const q = s => "'" + String(s).replace(/'/g, "''") + "'";
+      const ps = `$p = Start-Process -FilePath ${q(exe)} -WorkingDirectory ${q(path.dirname(exe))} -Verb RunAs ${args && args.length ? '-ArgumentList @(' + args.map(q).join(',') + ') ' : ''}-PassThru; $p.WaitForExit()`;
+      try {
+        const el = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', Buffer.from(ps, 'utf16le').toString('base64')], { windowsHide: true, stdio: 'ignore' });
+        running = el; spawned = true;
+        el.on('error', e => finish({ code: -1, error: e.message, failedToStart: true }));
+        el.on('exit', code => finish({ code, failedToStart: code !== 0 && Date.now() - started < 4000 }));
+        return;
+      } catch {}
+    }
+    finish({ code: -1, error: err.message, failedToStart: !spawned });
+  });
   child.on('exit', code => finish({ code }));
   return { pid: child.pid, args };
 }

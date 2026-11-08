@@ -29,6 +29,16 @@ Tyro-Shelf doesn't include or download any games, BIOS files or keys. You supply
 - **Animated SteamGridDB covers** (with an "animated only" filter) and a **custom back cover and spine** for PC games.
 - **Per-game window mode** for PC games Tyro-Shelf starts itself (custom, GOG, Quiver): the game's own setting,
   borderless fullscreen (for games with no fullscreen of their own), or windowed. Details → Window.
+- **Scripts and programs along with a game** (Details → Scripts): PowerShell lines (or a `.ps1` path) that run before the game
+  starts, after it started and after it closed, each with an "also run the global script" switch (Settings → PC), plus programs
+  that open together with the game and can close with it. The idea is from Playnite's Scripts tab; the scripts see
+  `TYRO_GAME_NAME`, `TYRO_GAME_ID`, `TYRO_GAME_EXE`, `TYRO_GAME_DIR` and `TYRO_GAME_SOURCE`.
+- **Epic games through Legendary** (Settings → PC): Settings can download [Legendary](https://github.com/derrod/legendary) and sign in
+  to Epic with the code from Epic's page; games Legendary has installed start without the Epic Games Launcher. Games only the
+  Epic launcher knows keep starting through it. Nothing of Legendary is bundled and no account details are kept by Tyro-Shelf.
+- **Desktop shortcuts** (Details → Desktop shortcut): a `.lnk` on your desktop that starts Tyro-Shelf and then that game.
+- **HoYoPlay games** (Genshin Impact, Honkai: Star Rail, Zenless Zone Zero, Honkai Impact 3rd) on the PC shelf, read from HoYoPlay's
+  install list. Programs that insist on administrator rights get a normal Windows prompt when started.
 - **Controller** works when connected before launch and stays working between games.
 - **Taskbar and focus fixes**: the taskbar comes back when you tab out of a game, a launching game is brought to the front
   (and restored if it minimized itself), and the shelf doesn't clutter Alt+Tab while a game runs.
@@ -56,11 +66,16 @@ git tag v18
 git push origin v18
 ```
 
+Or, from Windows, double-click `Publish release.bat` and type the number: it commits what changed, pushes it and tags it.
+
 Write the release notes as a bulleted list (`- one thing`): the first few bullets show on the shelf's "update available" card.
 An exe built any other way (not by this workflow) has no repository set, so its updater stays off.
 
 ## Credits and licence
 
+- **Playnite** (MIT, <https://github.com/JosefNemec/Playnite>): the idea of per-game scripts and desktop shortcuts. No Playnite code is used.
+- **HoYoPlay Library** add-on by darklinkpower (MIT, <https://github.com/darklinkpower/PlayniteExtensionsCollection>): where HoYoPlay keeps its install list. Rewritten, no code used.
+- **Legendary** by derrod / hawkeye116477 (GPL-3.0, <https://github.com/derrod/legendary>): downloaded from GitHub only when you ask; not part of this repository.
 - **Boxshelf** by sassiestrhihno: the app this is built on (GPL-3.0). Original: <https://github.com/sassiestrhihno/boxshelf-beta>
 - Third-party components and fonts are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 - Tyro-Shelf is free software under the GNU General Public License v3.0: you can use, change and share it under the same terms,

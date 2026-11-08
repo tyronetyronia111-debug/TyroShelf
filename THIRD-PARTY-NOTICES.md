@@ -10,6 +10,10 @@ open-source software, each under its own licence:
 | [meshoptimizer](https://github.com/zeux/meshoptimizer) (in `renderer/vendor/modelopt.worker.js`) | MIT | `renderer/vendor/meshoptimizer-LICENSE.md` |
 | Fonts from [Fontsource](https://fontsource.org/): Audiowide, Bungee, Chakra Petch, DM Serif Display, IBM Plex Mono, Lexend, Lilita One, Michroma, Syne, Unbounded | SIL Open Font License 1.1 | `renderer/fonts/LICENSES/` |
 
+Ideas and formats from other open-source projects (nothing copied, all rewritten in JavaScript): Playnite (MIT, per-game scripts and
+desktop shortcuts), the HoYoPlay Library add-on by darklinkpower (MIT, HoYoPlay's registry layout) and Legendary (GPL-3.0, used as a
+separate program downloaded by the user, never bundled).
+
 Built with [Electron](https://www.electronjs.org/) (MIT, plus Chromium's licences) on Windows and
 [Capacitor](https://capacitorjs.com/) (MIT) on Android; both are installed by `npm install` and keep their own licences.
 

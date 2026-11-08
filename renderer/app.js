@@ -934,7 +934,7 @@ function fillDetails(){
   $("dPlay").textContent=g.kind==="rom"||g.kind==="steam"?"Play":"Open";
   $("dInspect").hidden=g.kind!=="rom";$("dManual").hidden=g.kind!=="rom";$("dManual").querySelector("span").textContent=hasManual(g)?"Read manual":"Read booklet"; /* (beta.7: an icon button: only its label changes) */
   $("dEmu").hidden=!(g.kind==="rom"&&s.hasEmulator);$("dEmu").textContent=`Open ${s.emulatorName||"emulator"}`;
-  {const b=$("dBoxArt");if(b)b.hidden=!((g.kind==="rom"&&api.artStudio&&g.file)||(g.kind==="steam"&&api.pcCoverOptions));}{const b=$("dRename");if(b)b.hidden=!(api.renameGame&&((g.kind==="rom"&&g.file)||g.kind==="steam"));}{const b=$("dDiscord");if(b){b.hidden=!(api.gameDiscord&&dcOk(g));const d=gameDiscord(g);b.textContent=d&&d.hide?"Discord: off":"Discord";}}{const b=$("dWindow");if(b){b.hidden=!(api.gameWindow&&g.kind==="steam"&&["quiver","custom","gog"].includes(g.source));const w=gameWindowMode(g);b.textContent=w==="borderless"?"Window: borderless":w==="windowed"?"Window: windowed":"Window";}} /* (beta.5: PC games too, through the cover picker) */
+  {const b=$("dBoxArt");if(b)b.hidden=!((g.kind==="rom"&&api.artStudio&&g.file)||(g.kind==="steam"&&api.pcCoverOptions));}{const b=$("dRename");if(b)b.hidden=!(api.renameGame&&((g.kind==="rom"&&g.file)||g.kind==="steam"));}{const b=$("dDiscord");if(b){b.hidden=!(api.gameDiscord&&dcOk(g));const d=gameDiscord(g);b.textContent=d&&d.hide?"Discord: off":"Discord";}}{const b=$("dWindow");if(b){b.hidden=!(api.gameWindow&&g.kind==="steam"&&["quiver","custom","gog","hoyoplay","epic"].includes(g.source));{const sb=$("dScripts");if(sb)sb.hidden=!(api.gameScripts&&dcOk(g));const hb=$("dShortcut");if(hb)hb.hidden=!(api.shortcutCreate&&g&&(g.kind==="rom"||(g.kind==="steam")));}const w=gameWindowMode(g);b.textContent=w==="borderless"?"Window: borderless":w==="windowed"?"Window: windowed":"Window";}} /* (beta.5: PC games too, through the cover picker) */
   {const b=$("dCols");if(b)b.hidden=!isGame(g)||g.kind==="app";}
   {const b=$("dChooseManual");if(b){b.hidden=!(g.kind==="rom"&&api.manualStudio&&g.file);b.textContent=hasManual(g)?"Choose manual…":"Find a manual…"}}
   {const b=$("dGameEmu");if(b){const own=g.kind==="rom"?gameEmu(g):"";b.hidden=!(g.kind==="rom"&&api.gameEmulator);b.textContent=own?(emuLabel(own).length>16?emuLabel(own).slice(0,15)+"…":emuLabel(own)):"Emulator";b.title=own?`Runs in ${own} (just this game). Press to change.`:`Runs in the shelf's ${s.emulatorName||"emulator"}. Press to pick a different build for just this game.`;b.classList.toggle("own",!!own)}}
@@ -1727,7 +1727,7 @@ async function launchNow(g,underInsert){if(PV){pvStop();pvBackStop()} /* (beta.7
     // (beta.7) Ubisoft Connect, the EA app and the Xbox app too (PC_EXT): handed over the same way
     if(g.kind==="steam"&&PC_EXT[g.source]){const L=PC_EXT[g.source];showLaunch("Starting through "+L,g.title,L);await wait(650);if(mode!=="launch"||!launchCtx||launchCtx.g!==g)return;await api.launchPc(g.id);if(api.historyTouch)api.historyTouch(g.id).catch(()=>{});
       clearTimeout(launchTimer);launchTimer=setTimeout(()=>note(["Running through the "+L+". Press ",{b:btnWord("back")}," or ",{b:"Esc"}," to return to the shelf."]),1800);return}
-    if(g.kind==="steam"&&g.source&&g.source!=="steam"){runningKind="app";showLaunch(g.source==="quiver"?"Starting from Quiver":g.source==="gog"?"Starting from GOG":"Starting",g.title,g.title);await wait(650);if(mode!=="launch"||!launchCtx||launchCtx.g!==g)return;const r=await api.launchPc(g.id);sendHomeMeta(g);if(api.historyTouch)api.historyTouch(g.id).catch(()=>{});
+    if(g.kind==="steam"&&g.source&&g.source!=="steam"){runningKind="app";showLaunch(g.source==="quiver"?"Starting from Quiver":g.source==="gog"?"Starting from GOG":g.source==="hoyoplay"?"Starting from HoYoPlay":"Starting",g.title,g.title);await wait(650);if(mode!=="launch"||!launchCtx||launchCtx.g!==g)return;const r=await api.launchPc(g.id);sendHomeMeta(g);if(api.historyTouch)api.historyTouch(g.id).catch(()=>{});
       if(r&&r.cover){const bar=$("launch").querySelector(".l-bar i");bar.style.animation="none";void bar.offsetWidth;bar.style.animation=`load ${Math.min(r.cover,8)}s cubic-bezier(.5,0,.2,1) forwards`}}
     else if(g.kind==="steam"){showLaunch("Starting through Steam",g.title,`steam://rungameid/${g.appid}`);await wait(650);if(mode!=="launch"||!launchCtx||launchCtx.g!==g)return; /* backed out during the fade */await api.launchSteam(g.appid);if(api.historyTouch)api.historyTouch(g.id).catch(()=>{});
       clearTimeout(launchTimer);launchTimer=setTimeout(()=>note(["Running through Steam. Press ",{b:btnWord("back")}," or ",{b:"Esc"}," to return to the shelf."]),1800);return}
@@ -3859,7 +3859,7 @@ async function chooseGameEmu(g){if(!g||g.kind!=="rom"||!api.gameEmulator)return;
 // Details → Discord: this game's own status on Discord (hide it, another name, a picture of your own). Same Settings page
 // style as Rename; the game's current choice comes from the config the shelf already holds
 // only games Tyro-Shelf starts and can see end: console games, and PC games run from their own program (Quiver, GOG, added by hand); store-launched ones (Steam, Epic, Ubisoft, EA, Xbox) open through their store
-const dcOk=g=>!!g&&((g.kind==="rom"&&!!g.file)||(g.kind==="steam"&&["quiver","custom","gog"].includes(g.source)));
+const dcOk=g=>!!g&&((g.kind==="rom"&&!!g.file)||(g.kind==="steam"&&["quiver","custom","gog","hoyoplay","epic"].includes(g.source)));
 const gameDiscord=g=>{const o=g&&cfgInfo&&cfgInfo.config.games&&cfgInfo.config.games[g.id];return o&&o.discord||null};
 (function(){const c=$("dActEnd");if(!c||$("dDiscord"))return;const b=document.createElement("button");b.className="btn";b.type="button";b.id="dDiscord";b.textContent="Discord";b.title="Choose how this game shows on your Discord profile while you play it";
   b.addEventListener("click",()=>{const g=curGame();if(!api.gameDiscord||!dcOk(g))return;const s=g._sh||shelfFor(g);const ref=g.kind==="rom"?{systemId:s.id,file:g.file}:{id:g.id};
@@ -3867,8 +3867,22 @@ const gameDiscord=g=>{const o=g&&cfgInfo&&cfgInfo.config.games&&cfgInfo.config.g
 // (Tyro-Shelf-15) Details → Window: this PC game's window mode (only games Tyro-Shelf starts itself: Quiver, GOG, added by hand)
 const gameWindowMode=g=>{const o=g&&cfgInfo&&cfgInfo.config.games&&cfgInfo.config.games[g.id];return o&&o.window||""};
 (function(){const c=$("dActEnd");if(!c||$("dWindow"))return;const b=document.createElement("button");b.className="btn";b.type="button";b.id="dWindow";b.textContent="Window";b.title="Choose how this game's window is shown: its own setting, borderless fullscreen, or windowed";
-  b.addEventListener("click",()=>{const g=curGame();if(!api.gameWindow||!g||g.kind!=="steam"||!["quiver","custom","gog"].includes(g.source))return;
+  b.addEventListener("click",()=>{const g=curGame();if(!api.gameWindow||!g||g.kind!=="steam"||!["quiver","custom","gog","hoyoplay","epic"].includes(g.source))return;
     closeDetails(true);play_("panel");Setup.open({page:"windowgame",ref:{id:g.id},title:g.title,window:gameWindowMode(g)})});c.before(b)})();
+// (Tyro-Shelf-19) Details → Scripts (scripts and programs along with the game) and Desktop shortcut
+const gameScriptsOf=g=>{const o=g&&cfgInfo&&cfgInfo.config.games&&cfgInfo.config.games[g.id];return o&&o.scripts||null};
+(function(){const c=$("dActEnd");if(!c||$("dScripts"))return;const b=document.createElement("button");b.className="btn";b.type="button";b.id="dScripts";b.textContent="Scripts";b.title="Open programs and run scripts along with this game";
+  b.addEventListener("click",()=>{const g=curGame();if(!api.gameScripts||!dcOk(g))return;const s=g._sh||shelfFor(g);const ref=g.kind==="rom"?{systemId:s.id,file:g.file}:{id:g.id};
+    closeDetails(true);play_("panel");Setup.open({page:"scriptsgame",ref,title:g.title,scripts:gameScriptsOf(g)||{}})});c.before(b)})();
+(function(){const c=$("dActEnd");if(!c||$("dShortcut"))return;const b=document.createElement("button");b.className="btn";b.type="button";b.id="dShortcut";b.textContent="Desktop shortcut";b.title="Put a shortcut on your desktop that starts this game in Tyro-Shelf";
+  b.addEventListener("click",async()=>{const g=curGame();if(!api.shortcutCreate||!g||!(g.kind==="rom"||g.kind==="steam"))return;
+    try{await api.shortcutCreate({id:g.id,title:g.title});toast("Shortcut added to your desktop")}catch(e){toast(e&&e.message||"Couldn't make the shortcut")}})
+  ;c.before(b)})();
+// a desktop shortcut (or a second Tyro-Shelf started by one) names a game: start it once the shelf is showing it
+function shortcutGo(id){if(!id)return;let n=0;const t=setInterval(()=>{n++;if(n>80){clearInterval(t);return}
+  if(mode!=="browse"||!shelves.length)return;let hit=null;for(const sh of shelves){const f=(sh.items||[]).find(x=>x&&x.id===id&&(x.kind==="rom"||x.kind==="steam"));if(f){hit=f;if(!f._sh)f._sh=sh;break}}
+  if(!hit)return;clearInterval(t);try{api.log&&api.log("shortcut: starting "+hit.title)}catch{}launchNow(hit)},500)}
+api.onShortcut&&api.onShortcut(shortcutGo);api.shortcutTake&&Promise.resolve(api.shortcutTake()).then(shortcutGo).catch(()=>{});
 // the Details panel's "Box art" button (1.67): opens Settings → Art & manuals straight at this game's mix (front, back,
 // spine and disc looks, Pick exact for any part); B there goes up to the console's games, then the Art page
 (function(){const c=$("dActEnd");if(!c||$("dBoxArt"))return;const b=document.createElement("button");b.className="btn";b.type="button";b.id="dBoxArt";b.textContent="Box art";b.title="Choose this game's box art: front, back, spine and disc";

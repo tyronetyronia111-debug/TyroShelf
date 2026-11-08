@@ -156,7 +156,16 @@ function build(){
     F("Steam folder","steam.path","folder","The folder that contains steam.exe. Found automatically; change it only if Steam lives somewhere unusual.",{ph:"C:\\Program Files (x86)\\Steam",rescan:true,want:"dir",pickTitle:"Choose your Steam folder"}),
     A("Get Steam","Open site","Opens Steam's download page in your browser.",()=>openLink(OFFICIAL.steam)),
     // (beta.4) Epic's installs join the PC shelf (main/pcgames.js reads its install list; Play goes through its launcher)
-    T("Show installed Epic Games","pc.epic",true,"Adds the games the Epic Games Launcher has installed to the PC shelf. They start through the Epic launcher, so its sign-in and cloud saves work as usual.",{rescan:true,keys:"epic games store fortnite launcher",sub:()=>pcCount("epic")}),
+    T("Show installed Epic Games","pc.epic",true,"Adds your installed Epic games to the PC shelf. With Legendary (below) they start without the Epic Games Launcher; otherwise through the Epic launcher, so its sign-in and cloud saves work as usual.",{rescan:true,keys:"epic games store fortnite launcher",sub:()=>pcCount("epic")}),
+    T("Use Legendary for Epic games","pc.legendary",true,"Legendary is a small program that starts Epic games without the Epic Games Launcher (much lighter). Games it has installed start through it; the rest keep using the Epic launcher.",{rescan:true,keys:"legendary epic launcher lighter",sub:()=>lgSub()}),
+    {t:"action",label:"Legendary",btn:()=>lgSt&&lgSt.found?"Check":"Get it",info:"Downloads Legendary from GitHub (github.com/derrod/legendary, GPL-3.0) into Tyro-Shelf's data folder, or finds one you already have. Install your Epic games with Legendary itself (legendary install <game>); Tyro-Shelf lists what it has installed.",ns:true,keys:"legendary download get install",when:()=>pcOn("legendary"),run:lgGet,sub:()=>lgSub()},
+    {t:"action",label:"Epic sign-in",btn:()=>lgSt&&lgSt.signedIn?"Sign out":"Sign in",info:"Opens Epic's login page. Copy the code it shows (the authorizationCode value), then paste it in the box that appears. Tyro-Shelf never sees your password; Legendary keeps the sign-in.",ns:true,keys:"legendary epic sign in login code",when:()=>pcOn("legendary")&&!!(lgSt&&lgSt.found),run:lgSign,sub:()=>lgSt&&lgSt.signedIn?{text:lgSt.account?"Signed in as "+lgSt.account:"Signed in"}:{text:"Not signed in",cls:"warn"}},
+    X("Epic code","","Paste the code from Epic's login page here and press Enter.",{get:()=>"",set:()=>{},nosave:true,live:lgCode,ns:true,when:()=>pcOn("legendary")&&!!(lgSt&&lgSt.found&&!lgSt.signedIn),keys:"legendary epic code paste"}),
+    T("Show installed HoYoPlay games","pc.hoyoplay",true,"Genshin Impact, Honkai: Star Rail, Zenless Zone Zero and Honkai Impact 3rd, read from HoYoPlay's install list. Tyro-Shelf starts the game's own program. Idea from the HoYoPlay Library add-on for Playnite (MIT).",{rescan:true,keys:"hoyoplay hoyoverse genshin star rail zenless honkai mihoyo",sub:()=>pcCount("hoyoplay")}),
+    H("Scripts for every game"),
+    X("Before any game starts","scripts.pre","A PowerShell line (or the path of a .ps1 file) that every game can run before it starts. In a game's Details → Scripts, each game picks whether to run it.",{keys:"global script powershell before start"}),
+    X("After any game started","scripts.started","Run once a game is starting. The script sees TYRO_GAME_NAME, TYRO_GAME_ID, TYRO_GAME_EXE, TYRO_GAME_DIR.",{keys:"global script powershell after start"}),
+    X("After any game closed","scripts.post","Run when a game has closed.",{keys:"global script powershell exit closed"}),
     // (beta.7) more stores: each one's installs join the PC shelf (main/pcgames.js storeGames)
     T("Show installed GOG games","pc.gog",true,"Adds the games GOG Galaxy has installed to the PC shelf. GOG games have no copy protection, so Tyro-Shelf starts them itself, with the Home menu and quit combo like any game.",{rescan:true,keys:"gog galaxy store",sub:()=>pcCount("gog")}),
     T("Show installed Ubisoft games","pc.ubisoft",true,"Adds the games Ubisoft Connect has installed to the PC shelf. They start through Ubisoft Connect, so its sign-in and cloud saves work as usual.",{rescan:true,keys:"ubisoft connect uplay store",sub:()=>pcCount("ubisoft")}),
@@ -691,6 +700,21 @@ const sw2Row=()=>!!api.sw2Builds&&!(window.bsPlatform&&bsPlatform.os==="android"
 // for when the page is drawn
 let pcSt=null,pcAsking=false;const customNameRows=new WeakMap();
 // (beta.7) a store row's line: "3 installed" / "None installed" once main has counted (null while asking)
+// (Tyro-Shelf-19) Legendary rows
+let lgSt=null,lgAsking=false;
+const pcOn=k=>!cfg||!cfg.pc||cfg.pc[k]!==false;
+function lgLoad(){if(lgAsking||!api.legendaryStatus)return;lgAsking=true;Promise.resolve(api.legendaryStatus()).then(r=>{lgSt=r||{found:false};lgAsking=false;bump()}).catch(()=>{lgSt={found:false};lgAsking=false;bump()})}
+function lgSub(){if(!lgSt){setTimeout(lgLoad,0);return null}return lgSt.found?{text:"Found"+(pcSt&&pcSt.legendary!=null?` · ${pcSt.legendary} installed`:"")}:{text:"Not found · press Get it",cls:"warn"}}
+async function lgGet(){
+  if(lgSt&&lgSt.found){lgSt=null;lgLoad();toast("Checking Legendary…");return}
+  toast("Downloading Legendary…");const r=await Promise.resolve(api.legendaryDownload&&api.legendaryDownload()).catch(e=>({ok:false,error:errMsg(e)}));
+  if(r&&r.ok){toast("Legendary is ready");lgSt=null;pcSt=null;lgLoad()}else{toast((r&&r.error)||"Couldn't download Legendary");play("error")}}
+async function lgSign(){
+  if(lgSt&&lgSt.signedIn){await Promise.resolve(api.legendaryLogout&&api.legendaryLogout()).catch(()=>{});lgSt=null;lgLoad();toast("Signed out of Epic");return}
+  api.legendaryLogin&&api.legendaryLogin();toast("Epic's page is open: copy the code, then paste it in the row below")}
+async function lgCode(v){v=String(v||"").trim();if(!v)return;
+  const r=await Promise.resolve(api.legendaryCode(v)).catch(e=>({ok:false,error:errMsg(e)}));
+  if(r&&r.ok){toast("Signed in to Epic");lgSt=null;pcSt=null;lgLoad()}else{toast((r&&r.error)||"Couldn't sign in");play("error")}}
 function pcCount(k){if(!pcSt)setTimeout(pcStatus,0);return pcSt&&pcSt[k]!=null?{text:pcSt[k]?`${pcSt[k]} installed`:"None installed"}:null}
 function pcStatus(){if(pcAsking||!api.pcStatus)return;pcAsking=true;Promise.resolve(api.pcStatus()).then(r=>{pcSt=r||{};pcAsking=false;bump()}).catch(()=>{pcSt={};pcAsking=false;bump()})}
 function customRows(){if(!pcSt)setTimeout(pcStatus,0);cfg.pc=cfg.pc||{epic:true,quiver:true,quiverPath:"",custom:[]};const pc=cfg.pc;if(!Array.isArray(pc.custom))pc.custom=[];const rows=[];
@@ -937,6 +961,27 @@ async function dcSave(reset){const s=dcState;if(!s||!api.gameDiscord)return;
   try{const r=await api.gameDiscord({...s.ref,discord:s.d});s.d={...(r&&r.discord||{})};if(r&&r.games){if(info&&info.config)info.config.games=r.games;if(cfg)cfg.games=r.games}play("tick",1);toast(reset?"Back to the defaults":"Saved")}catch(e){toast(errMsg(e));play("error")}bump()}
 // (Tyro-Shelf-15) Details → Window: how this PC game's window is shown (the game's own setting, borderless fullscreen, or a window)
 let wmState=null;
+// (Tyro-Shelf-19) Details → Scripts: scripts before start / after start / after exit (each can also run the global one from
+// Settings → PC) and programs opened along with the game (the idea from Playnite's Scripts tab)
+let scState=null,scT=null;
+function scRows(){const st=scState;if(!st)return [];const s=st.s,R=st.rows,L=[];
+  const txt=(k,label,info)=>R[k]||(R[k]=X(label,"",info,{get:()=>s[k],set:v=>{s[k]=String(v||"").replace(/\s+/g," ").trim();scSave()},nosave:true,ns:true,keys:"script powershell "+label}));
+  const tog=(k,label,info)=>R[k]||(R[k]=T(label,"",true,info,{get:()=>s[k]!==false,set:v=>{s[k]=!!v;scSave()},nosave:true,ns:true}));
+  L.push(txt("pre","Before the game starts","A PowerShell line (or the path of a .ps1 file) run, and waited for (up to a minute), before the game starts."));
+  L.push(tog("gPre","Also run the global script (before)","Settings → PC has scripts every game can run too."));
+  L.push(txt("started","After the game started","Run once the game is starting."));
+  L.push(tog("gStarted","Also run the global script (after start)",""));
+  L.push(txt("post","After the game closed","Run when the game has closed."));
+  L.push(tog("gPost","Also run the global script (after exit)",""));
+  s.programs.forEach((p,i)=>{const k="p"+i;
+    L.push(R[k+"e"]||(R[k+"e"]=F(`Program ${i+1}`,"","file","Opened together with the game.",{get:()=>p.exe,set:v=>{p.exe=String(v||"");scSave()},nosave:true,ns:true,want:"file",ph:"Choose a program",filters:[{name:"Programs",extensions:["exe","bat","cmd","lnk"]}]})));
+    L.push(R[k+"a"]||(R[k+"a"]=X(`Program ${i+1}: options`,"","Command line options for it (optional).",{get:()=>p.args,set:v=>{p.args=String(v||"");scSave()},nosave:true,ns:true})));
+    L.push(R[k+"c"]||(R[k+"c"]=T(`Program ${i+1}: close with the game`,"",false,"Close it when the game closes.",{get:()=>p.close===true,set:v=>{p.close=!!v;scSave()},nosave:true,ns:true})));
+    L.push(R[k+"r"]||(R[k+"r"]=A(`Program ${i+1}`,"Remove","Stop opening it with this game.",()=>{s.programs.splice(i,1);st.rows={};scSave();bump()},{ns:true})));});
+  if(s.programs.length<10)L.push(R.add||(R.add=A("Open another program with this game","Add","Add a program that starts together with the game.",()=>{s.programs.push({exe:"",args:"",close:false});st.rows={};bump()},{ns:true})));
+  return L}
+function scSave(){clearTimeout(scT);scT=setTimeout(async()=>{const st=scState;if(!st||!api.gameScripts)return;
+  try{const r=await api.gameScripts({id:st.ref.systemId?st.ref.systemId+":"+st.ref.file:st.ref.id,scripts:st.s});const g=(info&&info.config&&info.config.games)||(cfg&&cfg.games);if(g){const k=st.ref.systemId?st.ref.systemId+":"+st.ref.file:st.ref.id;if(r&&r.scripts)g[k]={...(g[k]||{}),scripts:r.scripts};else if(g[k])delete g[k].scripts}toast("Saved: applies next time you start it")}catch(e){toast(errMsg(e));play("error")}},600)}
 function wmRows(){const s=wmState;if(!s)return [];
   if(!s.row)s.row={t:"choice",label:"Window mode",opts:[["default","The game's own setting"],["borderless","Borderless fullscreen"],["windowed","Windowed"]],d:"default",get:()=>s.w||"default",set:v=>{s.w=v==="borderless"||v==="windowed"?v:"";wmSave()},nosave:true,ns:true,info:"The game's own setting: Tyro-Shelf leaves the window alone (a fullscreen game stays fullscreen, with the taskbar hidden).\nBorderless fullscreen: for a game with no fullscreen of its own. Tyro-Shelf removes its title bar and stretches it over the screen.\nWindowed: the game stays in a window and the taskbar stays visible.\nApplies the next time you start the game.",keys:"window mode fullscreen borderless windowed screen"};
   return [s.row]}
@@ -1177,6 +1222,9 @@ function route(page,o){if(!page)return;o=o||{};
   if(page==="discordgame"&&o.ref){dcState={ref:o.ref,title:String(o.title||""),d:{...(o.discord||{})}};
     MORE.discordgame={id:"discordgame",name:`Discord: ${dcState.title}`.slice(0,60),lead:"How this game shows on your Discord profile while you play it. Turn Discord on in Settings → System first.",rows:[{t:"dyn",fn:dcRows}]};
     goSecId(o.ref.systemId?"consoles":(/^(steam|epic)-/.test(String(o.ref.id||""))?"pc":"custom"));focus="page";rowI=0;openSub({kind:"more",id:"discordgame"});return}
+  if(page==="scriptsgame"&&o.ref){const sc=o.scripts||{};scState={ref:o.ref,title:String(o.title||""),s:{pre:sc.pre||"",started:sc.started||"",post:sc.post||"",gPre:sc.gPre!==false,gStarted:sc.gStarted!==false,gPost:sc.gPost!==false,programs:(sc.programs||[]).map(p=>({...p}))},rows:{}};
+    MORE.scriptsgame={id:"scriptsgame",name:`Scripts: ${scState.title}`.slice(0,60),lead:"Programs and PowerShell scripts that run along with this game. Scripts are one line, or the path of a .ps1 file.",rows:[{t:"dyn",fn:scRows}]};
+    goSecId(o.ref.systemId||/^(steam|epic)-/.test(String(o.ref.id||""))?(o.ref.systemId?"consoles":"pc"):"custom");focus="page";rowI=0;openSub({kind:"more",id:"scriptsgame"});return}
   if(page==="windowgame"&&o.ref){wmState={ref:o.ref,title:String(o.title||""),w:o.window||""};
     MORE.windowgame={id:"windowgame",name:`Window: ${wmState.title}`.slice(0,60),lead:"How this game's window is shown when Tyro-Shelf starts it.",rows:[{t:"dyn",fn:wmRows}]};
     goSecId(/^(steam|epic)-/.test(String(o.ref.id||""))?"pc":"custom");focus="page";rowI=0;openSub({kind:"more",id:"windowgame"});return}

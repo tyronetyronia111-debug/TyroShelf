@@ -32,6 +32,8 @@ function scanSystem(def, sc) {
 const ownTitle = id => { const o = cfg && cfg.games && cfg.games[String(id)]; return o && o.title ? o.title : ''; }; // (PC games, by id)
 const { scanSteam } = require('./main/steam');
 const steamart = require('./main/steamart');
+const legendary = require('./main/legendary'); // (Tyro-Shelf-19) Epic games through Legendary
+const gscripts = require('./main/gamescripts'); // (Tyro-Shelf-19) scripts and programs opened along with a game
 const pcgames = require('./main/pcgames'); // (beta.4) Epic, Quiver Launcher and games added by hand
 const pccovers = require('./main/pccovers'); // (beta.5) choosing a PC game's cover (SteamGridDB, Steam's own, your own)
 const wiiumanual = require('./main/wiiumanual');
@@ -170,7 +172,7 @@ if (!firstInstance) { log('Already running, focusing the open window'); app.quit
 app.on('render-process-gone', (e, wc, d) => log('Screen process stopped:', d.reason, d.exitCode));
 app.on('child-process-gone', (e, d) => log('Helper process stopped:', d.type, d.reason, d.exitCode));
 process.on('exit', code => log('Exiting with code', code));
-app.on('second-instance', () => { if (alive() && launcher.isRunning()) { padwatch.front(runKind === 'app'); return; } /* (a media app: leave the pad-driven pointer where it is) */ /* a game is on: keep it in front, don't half-show the shelf */ if (alive()) { if (win.isMinimized()) win.restore(); stepIn(); try { win.setOpacity(1); } catch {} win.show(); win.focus(); } });
+app.on('second-instance', (e, argv) => { const sid = launchArg(argv); if (sid && alive() && !launcher.isRunning()) { pendingShortcut = ''; win.webContents.send('shortcut:launch', sid); } else if (sid) log('Shortcut ignored: something is already running'); if (alive() && launcher.isRunning()) { padwatch.front(runKind === 'app'); return; } /* (a media app: leave the pad-driven pointer where it is) */ /* a game is on: keep it in front, don't half-show the shelf */ if (alive()) { if (win.isMinimized()) win.restore(); stepIn(); try { win.setOpacity(1); } catch {} win.show(); win.focus(); } });
 
 // bsfile:// serves local images and videos (covers, Steam art, logos, boot videos).
 // Chromium's web cache: downloads are saved by Boxshelf itself, so a small cache is plenty (it had grown to 360 MB)
@@ -540,6 +542,7 @@ function watchPad(opts) {
     { ...opts, home, nin: true, onGameWin: () => { gameWinSeen = true; }, taskbarHidden: tbHidden, onWindow: opts.appPid ? onGameWindow : undefined, cmdFile: path.join(app.getPath('temp'), `boxshelf-pad-${process.pid}.txt`), onHome: kind => { homemenu.setMeta({ glyphs: kind || shelfGlyphs }); /* the menu shows the buttons of the pad that opened it (an XInput pad: the shelf's last prompts) */ Promise.resolve(homemenu.open()).catch(e => log('home menu', e && e.message)); }, onButton: (b, d) => homemenu.button(b, d), isMenuOpen: () => homemenu.isOpen(), onFullscreen: opts.appPid ? liftCover : undefined });
 }
 function onExit(info) {
+  if (scriptRun) { try { gscripts.afterExit(scriptRun.g, scriptRun.game, cfg.scripts); } catch (e) { log('Game scripts:', e.message); } scriptRun = null; }
   setTimeout(() => dumpWindows('after game'), 4000); setTimeout(() => dumpTopLevel('after game'), 5000);
   markEvent('game exited'); presence.stop(); clearQuitCover(); wiimote.resume(); // (the Wii remote back to the shelf, after Dolphin had it)
   // (1.82) a game's emulator that closed by itself within 5 s (a missing BIOS, keys or firmware, bad launch options) wasn't a
@@ -580,7 +583,7 @@ function iconQuick(exe) {
 }
 // (beta.7) store games: real store titles, so their covers come from the Steam app with the same name (not Quiver's or
 // hand-added programs: those often share a name with an unrelated game)
-const STORE_SRC = new Set(['epic', 'gog', 'ubisoft', 'ea', 'xbox']);
+const STORE_SRC = new Set(['epic', 'gog', 'ubisoft', 'ea', 'xbox', 'hoyoplay']);
 async function buildLibrary() {
   const shelves = [];
   for (const def of CONSOLES) {
@@ -603,7 +606,11 @@ async function buildLibrary() {
   // are PC games with a source (kind 'steam' keeps every shelf feature); covers come from the Steam app their title
   // matched (pcgames.matchSteam, never an appid the screen could launch: Play goes through launch:pc by id)
   const pc = cfg.pc || {}, epic = [], mine = [];
-  if (pc.epic !== false) try { epic.push(...pcgames.epicGames()); } catch (e) { log('Epic library', e.message); }
+  legendary.setPath(pc.legendaryPath);
+  if (pc.epic !== false) try {
+    const eg = pc.legendary !== false ? pcgames.legendaryGames(legendary) : [], lid = new Set(eg.map(g => g.id)); // Legendary's installs win over the Epic launcher's entry for the same game
+    epic.push(...pcgames.epicGames().filter(g => !lid.has(g.id)), ...eg);
+  } catch (e) { log('Epic library', e.message); }
   // (beta.7) GOG Galaxy, Ubisoft Connect, the EA app and Xbox / Game Pass join the PC shelf too, like Epic (store games)
   try { epic.push(...await pcgames.storeGames(pc)); } catch (e) { log('PC stores', e.message); }
   if (pc.quiver !== false) try { mine.push(...pcgames.quiverGames(pc.quiverPath)); } catch (e) { log('Quiver library', e.message); }
@@ -1312,7 +1319,10 @@ handle('launch:game', async ({ systemId, file, emulator }) => {
   if (systemId === 'sw2' && !paths.isFile(sc.emulator)) { const b = (await nx2.builds(sw2Roots())).filter(x => !/\.nup$/i.test(file) || x.nup).sort((a, c) => c.date - a.date)[0]; if (b) sc = { ...sc, emulator: b.exe }; }
   }
   if (launching || launcher.isRunning()) throw new Error('Something is already running. Close it first.');
-  launching = true; try { return await launchGameNow(systemId, file, sc); } finally { launching = false; }
+  launching = true; try {
+    const gid = systemId + ':' + file; await scriptsBefore({ id: gid, title: path.basename(file, path.extname(file)), exe: sc.emulator, source: systemId });
+    let r; try { r = await launchGameNow(systemId, file, sc); } catch (e) { scriptRun = null; throw e; } scriptsStarted(); return r;
+  } finally { launching = false; }
 });
 // (beta.6) RetroArch's cores: <its folder>\cores\<core>_libretro.dll, or the folder its own settings name
 // (retroarch.cfg's libretro_directory; ":" there means RetroArch's own folder)
@@ -1417,22 +1427,29 @@ handle('launch:steam', ({ appid }) => launcher.launchSteam(appid));
 // (beta.4) a PC game that isn't Steam's, named by id only: Epic's go through its launcher's link; Quiver's and the ones
 // added by hand start their own program in its own folder (recomps read their files from there), with the Home menu and
 // the quit buttons like any app
+const srcLabel = (g, other) => g.source === 'quiver' ? 'Quiver' : g.source === 'gog' ? 'GOG' : g.source === 'hoyoplay' ? 'HoYoPlay' : g.source === 'epic' ? 'Epic' : other;
+// ---- (Tyro-Shelf-19) scripts and companion programs around a game (main/gamescripts.js)
+let scriptRun = null;
+async function scriptsBefore(g) { const game = ((cfg.games || {})[g.id] || {}).scripts; scriptRun = { g: { id: g.id, title: g.title, exe: g.exe, source: g.source }, game }; try { await gscripts.before(scriptRun.g, game, cfg.scripts); } catch (e) { log('Game scripts:', e.message); } }
+function scriptsStarted() { if (scriptRun) try { gscripts.afterStart(scriptRun.g, scriptRun.game, cfg.scripts); } catch (e) { log('Game scripts:', e.message); } }
 handle('launch:pc', async ({ id }) => {
   const g = pcgames.byId(id); if (!g) throw new Error("That game isn't on the shelf any more. The shelf is refreshing; try again in a moment.");
   // through its store's launcher (Epic, and from beta.7 Ubisoft Connect and the EA app: their sign-in, cloud saves, overlay)
-  if (g.uri && /^(com\.epicgames\.launcher|uplay|origin2):\/\//i.test(g.uri)) { busyCheck(); log('PC launch:', g.source, g.title); return shell.openExternal(g.uri).then(() => ({ external: true })); }
+  const leg = g.legendary && (cfg.pc || {}).legendary !== false ? legendary.find() : '';
+  if (!leg && g.uri && /^(com\.epicgames\.launcher|uplay|origin2):\/\//i.test(g.uri)) { busyCheck(); log('PC launch:', g.source, g.title); return shell.openExternal(g.uri).then(() => ({ external: true })); }
   // (beta.7) an Xbox / Game Pass game is a Windows app: started as one (its package family and app id, from pcgames.xboxGames)
   if (g.shellApp) { if (!/^[\w.-]+_[a-z0-9]+![\w.-]+$/i.test(g.shellApp)) throw new Error("Couldn't start that Xbox game."); busyCheck(); log('PC launch: Xbox,', g.title);
     const p = spawn('explorer.exe', ['shell:AppsFolder\\' + g.shellApp], { detached: true, stdio: 'ignore' }); p.on('error', e => log('Xbox launch', e.message)); p.unref(); return { external: true }; }
-  if (!paths.isFile(g.exe)) throw new Error(`${g.title} isn't at ${g.exe} any more. ${g.source === 'quiver' ? 'Check it in Quiver Launcher.' : g.source === 'gog' ? 'Check it in GOG Galaxy.' : 'Remove it in Settings → Custom games and add it again.'}`);
+  if (!leg && !paths.isFile(g.exe)) throw new Error(`${g.title} isn't at ${g.exe} any more. ${g.source === 'quiver' ? 'Check it in Quiver Launcher.' : g.source === 'gog' ? 'Check it in GOG Galaxy.' : g.source === 'hoyoplay' ? 'Check it in HoYoPlay.' : g.source === 'epic' ? 'Check it in Legendary or the Epic Games Launcher.' : 'Remove it in Settings → Custom games and add it again.'}`);
   busyCheck();
   const winMode = ((cfg.games && cfg.games[g.id]) || {}).window || ''; // (Tyro-Shelf-15) '', 'borderless' or 'windowed'
   if (winMode !== 'windowed') { launching = true; try { await taskbarHide(); } finally { launching = false; } } // (beta.6; a game kept in a window keeps the taskbar)
   log('PC launch window mode:', winMode || 'the game\'s own');
   windowedRun = winMode === 'windowed';
-  let r; try { r = launcher.launchApp(g.exe, onExit, launcher.buildArgs(g.args || '', '')); } catch (e) { taskbarShow('the game did not start'); throw e; } runKind = 'app'; pendingPower = null; log('PC launch:', g.source, g.title);
-  try { const own = (cfg.games && cfg.games[g.id] || {}).discord || {}; presence.play({ title: own.name || g.title, system: g.source === 'quiver' ? 'Quiver' : g.source === 'gog' ? 'GOG' : 'PC', systemId: 'pc', hide: own.hide === true, image: own.image || '', clientId: own.appId || '', startedAt: Date.now() }); } catch (e) { log('Discord presence:', e.message); }
-  if (cfg.ui.homeMenu !== false) homemenu.begin({ systemId: 'pc', exe: g.exe, systemName: g.source === 'quiver' ? 'Quiver' : g.source === 'gog' ? 'GOG' : 'Custom', title: g.title, hotkeys: {} });
+  launching = true; try { await scriptsBefore(g); } finally { launching = false; }
+  let r; try { r = leg ? launcher.launchApp(leg, onExit, ['launch', g.legendary]) : launcher.launchApp(g.exe, onExit, launcher.buildArgs(g.args || '', '')); } catch (e) { scriptRun = null; taskbarShow('the game did not start'); throw e; } runKind = 'app'; pendingPower = null; log('PC launch:', g.source, g.title, leg ? '(through Legendary)' : ''); scriptsStarted();
+  try { const own = (cfg.games && cfg.games[g.id] || {}).discord || {}; presence.play({ title: own.name || g.title, system: srcLabel(g, 'PC'), systemId: 'pc', hide: own.hide === true, image: own.image || '', clientId: own.appId || '', startedAt: Date.now() }); } catch (e) { log('Discord presence:', e.message); }
+  if (cfg.ui.homeMenu !== false) homemenu.begin({ systemId: 'pc', exe: g.exe, systemName: srcLabel(g, 'Custom'), title: g.title, hotkeys: {} });
   watchPad({ mouse: false, appPid: r.pid, fullscreenKey: null, home: true, winMode });
   return { ...r, cover: coverWhileStarting(winMode === 'windowed' ? 4 : 10, { untilWindow: 40 }) };
 });
@@ -1491,8 +1508,37 @@ handle('game:window', ({ id, window: mode }) => {
 handle('pc:status', async () => { const pc = cfg.pc || {}; let epic = null; try { epic = pcgames.epicGames().length; } catch {}
   // (beta.7) each store's installed games, counted whether its switch is on or not (Settings says what it would add)
   const n = async f => { try { return (await f()).length; } catch { return null; } };
-  const [gog, ubisoft, ea, xbox] = await Promise.all([n(pcgames.gogGames), n(pcgames.ubisoftGames), n(pcgames.eaGames), n(pcgames.xboxGames)]);
-  return { quiver: pcgames.quiverRoots(pc.quiverPath)[0] || '', epic, gog, ubisoft, ea, xbox }; });
+  const [gog, ubisoft, ea, xbox, hoyoplay] = await Promise.all([n(pcgames.gogGames), n(pcgames.ubisoftGames), n(pcgames.eaGames), n(pcgames.xboxGames), n(pcgames.hoyoGames)]);
+  legendary.setPath(pc.legendaryPath); let leg = null; try { leg = pcgames.legendaryGames(legendary).length; } catch {}
+  return { quiver: pcgames.quiverRoots(pc.quiverPath)[0] || '', epic, gog, ubisoft, ea, xbox, hoyoplay, legendary: leg, legendaryExe: legendary.find() }; });
+// ---- (Tyro-Shelf-19) Legendary (main/legendary.js): find / download, sign in with the code from Epic's page, sign out
+handle('legendary:status', async () => { legendary.setPath((cfg.pc || {}).legendaryPath); return legendary.status(); });
+handle('legendary:download', async () => { const r = await legendary.download(); if (r.ok && alive()) win.webContents.send('library:changed', { legendary: 1 }); return r; });
+handle('legendary:login', () => { shell.openExternal(legendary.LOGIN_URL); return { ok: true }; });
+handle('legendary:code', async ({ code }) => { const r = await legendary.authCode(code); if (r.ok && alive()) win.webContents.send('library:changed', { legendary: 1 }); return r; });
+handle('legendary:logout', () => legendary.logout());
+// ---- (Tyro-Shelf-19) a game's scripts and programs (Details → Scripts); the screen sends the whole set, config.js cleans it
+handle('game:scripts', ({ id, scripts }) => {
+  const key = String(id || ''); if (!key || key.length > 2048) throw new Error('Unknown game.');
+  const games = { ...(cfg.games || {}) }, cur = { ...(games[key] || {}) };
+  if (scripts) cur.scripts = scripts; else delete cur.scripts;
+  if (Object.keys(cur).length) games[key] = cur; else delete games[key];
+  applyCfg({ ...cfg, games }); return { ok: true, scripts: (cfg.games[key] || {}).scripts || null };
+});
+// ---- (Tyro-Shelf-19) desktop shortcuts: a .lnk that starts Tyro-Shelf with --tyro-launch=<game id>; a running Tyro-Shelf is told
+// to start that game, else the game starts as soon as the shelf is up (the screen collects it with shortcut:take)
+const launchArg = argv => { const a = (argv || []).find(x => /^--tyro-launch=/.test(x)); if (!a) return ''; try { return Buffer.from(a.slice(14), 'base64url').toString('utf8').slice(0, 2048); } catch { return ''; } };
+let pendingShortcut = launchArg(process.argv);
+handle('shortcut:take', () => { const v = pendingShortcut; pendingShortcut = ''; return v; });
+handle('shortcut:create', ({ id, title }) => {
+  id = String(id || ''); title = String(title || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
+  if (!id || !title) throw new Error('Unknown game.');
+  const self = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath, pg = pcgames.byId(id);
+  const file = path.join(app.getPath('desktop'), title + '.lnk');
+  const ok = shell.writeShortcutLink(file, 'create', { target: self, args: '--tyro-launch=' + Buffer.from(id, 'utf8').toString('base64url'), cwd: path.dirname(self), description: 'Play ' + title + ' in Tyro-Shelf', icon: pg && pg.exe && paths.isFile(pg.exe) ? pg.exe : self, iconIndex: 0 });
+  if (!ok) throw new Error("Couldn't write the shortcut to the desktop.");
+  log('Desktop shortcut:', file); return { ok: true, file };
+});
 handle('pc:findQuiver', () => { const t0 = Date.now(), d = pcgames.quiverFind(); log('Find Quiver:', d ? 'found' : 'not found', Date.now() - t0, 'ms'); return d || ''; });
 // the reading corner: your Magazines\ and Guides\ folders (the screen only ever names items by id)
 handle('library:list', () => { try { library.setCacheRoot(path.join(app.getPath('userData'), 'library')); return library.list().map(i => ({ id: i.id, kind: i.kind, type: i.type, title: i.title, series: i.series || '', pages: i.pages || 0 })); } catch (e) { log('library', e.message); return []; } });
@@ -2306,7 +2352,7 @@ function startUp() {
   stremio.init({ log, fanartKey: () => (cfg && cfg.keys && cfg.keys.fanart) || '', artDir: path.join(app.getPath('userData'), 'stremio-art'), fetchBuf: async url => { const r = await net.fetch(url); if (r.status === 404) return null; if (!r.ok) throw new Error('HTTP ' + r.status); return Buffer.from(await r.arrayBuffer()); } }); // null = really not there; other failures throw, so nothing "missing" is cached for them
   icons.init(app.getPath('userData'), log);
   x360.init(app.getPath('userData'), log);
-  steamart.init(app.getPath('userData'), log); pcgames.init(app.getPath('userData'), log); pccovers.init({ dataDir: app.getPath('userData'), log, placed: d => artVer.set(path.resolve(d).toLowerCase(), Date.now()), fileUrl, fetchImage, steamgrid: require('./main/steamgrid'), steamCover: id => steamart.local(id).front, match: covers.sgMatch });
+  steamart.init(app.getPath('userData'), log); pcgames.init(app.getPath('userData'), log); gscripts.init(log); legendary.init(log, path.join(app.getPath('userData'), 'legendary')); legendary.setPath(cfg && cfg.pc && cfg.pc.legendaryPath); pccovers.init({ dataDir: app.getPath('userData'), log, placed: d => artVer.set(path.resolve(d).toLowerCase(), Date.now()), fileUrl, fetchImage, steamgrid: require('./main/steamgrid'), steamCover: id => steamart.local(id).front, match: covers.sgMatch });
   wiiumanual.init(app.getPath('userData'), log);
   ra.init(app.getPath('userData'), log); ra.setCredentials(cfg.ra && cfg.ra.enabled !== false ? cfg.ra.user : '', cfg.ra && cfg.ra.key);
   manuals.init(log); archive.init(log); manuals.setStore(path.join(app.getPath('userData'), 'manual-auto.json')); manuals.setRejectStore(path.join(app.getPath('userData'), 'manual-rejects.json'));

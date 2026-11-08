@@ -156,10 +156,41 @@ function xboxScan(roots) {
 }
 // all four at once; each one that fails is only logged (one store's oddity must not empty the shelf)
 async function storeGames(pc = {}) {
-  const want = { gog: pc.gog !== false, ubisoft: pc.ubisoft !== false, ea: pc.ea !== false, xbox: pc.xbox !== false };
-  const jobs = { gog: gogGames, ubisoft: ubisoftGames, ea: eaGames, xbox: xboxGames }, out = [];
+  const want = { hoyoplay: pc.hoyoplay !== false, gog: pc.gog !== false, ubisoft: pc.ubisoft !== false, ea: pc.ea !== false, xbox: pc.xbox !== false };
+  const jobs = { hoyoplay: hoyoGames, gog: gogGames, ubisoft: ubisoftGames, ea: eaGames, xbox: xboxGames }, out = [];
   await Promise.all(Object.keys(jobs).filter(k => want[k]).map(k => jobs[k]().then(l => out.push(...l), e => log('PC library', k, e && e.message))));
   return out.sort((a, b) => a.title.localeCompare(b.title));
+}
+
+// ---------- HoYoPlay (Genshin Impact, Honkai: Star Rail, Zenless Zone Zero, Honkai Impact 3rd) ----------
+// Same place the Playnite "HoYoPlay Library" add-on (darklinkpower, MIT) reads: HKCU\Software\Cognosphere\HYP\<version>\<game>
+// with GameBiz and GameInstallPath. Started by the game's own program (HoYoPlay's launcher is not needed to play).
+const HOYO = [
+  { re: /^hk4e/i, title: 'Genshin Impact', exes: ['GenshinImpact.exe', 'YuanShen.exe'] },
+  { re: /^hkrpg/i, title: 'Honkai: Star Rail', exes: ['StarRail.exe'] },
+  { re: /^nap/i, title: 'Zenless Zone Zero', exes: ['ZenlessZoneZero.exe'] },
+  { re: /^bh3/i, title: 'Honkai Impact 3rd', exes: ['BH3.exe'] },
+];
+async function hoyoGames() {
+  const out = [], seen = new Set();
+  for (const [k, v] of await regTree('HKCU\\Software\\Cognosphere\\HYP')) {
+    // (HoYoPlay may keep these as REG_BINARY: reg.exe prints those as hex of the text, with a closing zero byte)
+    const dec = x => { x = String(x || '').trim(); if (/^([0-9a-f]{2}){4,}$/i.test(x)) { const t = Buffer.from(x, 'hex').toString('utf8').replace(/\0+$/, ''); if (/^[\x20-\x7e\u00a0-\uffff]+$/.test(t)) return t; } return x; };
+    const biz = dec(v.gamebiz), dir = dec(v.gameinstallpath).replace(/^"|"$/g, ''); if (!biz || !dir || !isDir(dir)) continue;
+    const def = HOYO.find(d => d.re.test(biz)); if (!def) continue;
+    let exe = def.exes.map(n => path.join(dir, n)).find(isFile) || mainExe(dir); if (!exe) continue;
+    const id = 'hoyo-' + slug(biz); if (seen.has(id)) continue; seen.add(id);
+    out.push({ id, source: 'hoyoplay', title: def.title + (/_cn$/i.test(biz) ? ' (China)' : ''), exe, args: '' });
+  }
+  return out;
+}
+
+// ---------- Epic through Legendary ----------
+// Games Legendary has installed replace the Epic Games Launcher's entries with the same name (same shelf id, so covers and
+// settings carry over) and start through `legendary launch`. Games only the Epic launcher knows keep its link.
+function legendaryGames(leg) {
+  if (!leg || !leg.find()) return [];
+  return leg.installed().map(g => ({ id: 'epic-' + slug(g.app), source: 'epic', title: g.title, exe: g.exe, legendary: g.app }));
 }
 
 // ---------- the program in a game's folder ----------
@@ -295,4 +326,4 @@ async function matchSteam(titles) {
 }
 
 module.exports = { init, epicGames, quiverGames, quiverFind, quiverRoots, customGames, titleFromExe, mainExe, remember, byId, steamIdOf, matchSteam, EPIC_DIR,
-  storeGames, gogGames, ubisoftGames, eaGames, xboxGames, parseReg, xboxRoots, eaFromDirs, xboxScan };
+  storeGames, hoyoGames, legendaryGames, gogGames, ubisoftGames, eaGames, xboxGames, parseReg, xboxRoots, eaFromDirs, xboxScan };
