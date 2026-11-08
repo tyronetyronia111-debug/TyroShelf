@@ -103,10 +103,10 @@ let refreshing = null;
 function refreshOwned() {
   if (refreshing) return refreshing;
   refreshing = (async () => {
-    if (!find() || !signedInFile()) return false;
-    const r = await run(['list', '--json'], 180000);
+    if (!find()) return false;
+    const r = await run(['list', '--json'], 180000); log('Legendary list: finished', r.ok ? 'ok' : 'with an error', String(r.stdout || '').length, 'bytes of answer');
     let arr; try { const t = r.stdout, i = t.search(/\[\s*(\{|\])/); arr = JSON.parse(t.slice(i)); } catch { log('Legendary list: unreadable answer', String(r.out).replace(/\s+/g, ' ').slice(0, 300)); return false; }
-    if (!Array.isArray(arr)) return false;
+    if (!Array.isArray(arr)) { log('Legendary list: not a list', String(r.out).replace(/\s+/g, ' ').slice(0, 300)); return false; }
     const games = [];
     for (const g of arr) {
       if (!g || typeof g !== 'object') continue;

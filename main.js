@@ -584,6 +584,7 @@ function iconQuick(exe) {
 // (beta.7) store games: real store titles, so their covers come from the Steam app with the same name (not Quiver's or
 // hand-added programs: those often share a name with an unrelated game)
 const STORE_SRC = new Set(['epic', 'gog', 'ubisoft', 'ea', 'xbox', 'hoyoplay']);
+let lgTried = 0;
 async function buildLibrary() {
   const shelves = [];
   for (const def of CONSOLES) {
@@ -608,7 +609,7 @@ async function buildLibrary() {
   const pc = cfg.pc || {}, epic = [], mine = [];
   legendary.setPath(pc.legendaryPath);
   if (pc.epic !== false) try {
-    if (pc.legendary !== false && legendary.find() && legendary.signedInFile() && Date.now() - legendary.owned().at > 12 * 3600e3) legendary.refreshOwned().then(ok => { if (ok && alive()) win.webContents.send('library:changed', { legendary: 1 }); }); // (the owned list, in the background)
+    if (pc.legendary !== false && legendary.find() && Date.now() - legendary.owned().at > 12 * 3600e3 && Date.now() - lgTried > 30 * 60e3 && (lgTried = Date.now())) legendary.refreshOwned().then(ok => { if (ok && alive()) win.webContents.send('library:changed', { legendary: 1 }); }); // (the owned list, in the background)
     const eg = pc.legendary !== false ? pcgames.legendaryGames(legendary) : [], lid = new Set(eg.map(g => g.id)); // Legendary's installs win over the Epic launcher's entry for the same game
     epic.push(...pcgames.epicGames().filter(g => !lid.has(g.id)), ...eg);
   } catch (e) { log('Epic library', e.message); }
