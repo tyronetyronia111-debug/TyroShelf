@@ -49,7 +49,7 @@ function defaults() {
     ui: { musicMuted: false, sound: true, startFullscreen: true, buttons: 'auto', performance: 'auto', quitCombo: true, quitComboKeys: 'l3+r3', soundTheme: 'aero', volume: .7, ambient: false, ambientLevel: .02, music: 'off', musicLevel: .4, rumble: true, soundRev: 4, autoCovers: false, autoManuals: false, artLibrary: '', attract: true, attractMinutes: 3, shuffleAll: true, favorites: [], collections: [], background: 'blur', theme: 'spectrum', sort: 'az', filter: 'all', museumLight: 'gallery', homeMenu: true, homeLayout: 'side', hideTaskbar: true, uiScale: 1, previews: 'off', previewSound: false, previewYoutube: true, previewClips: true, previewDirs: [], previewDelay: 1.5, previewHint: false, clipHint: false, deckHint: false, lastSeenVersion: '', // (beta.7) video previews; lastSeenVersion: the version whose What's new was shown: off / details / shelf (Details and behind the shelf); the first run asks
       // 1.55 Settings
       captureCompat: true, // (Tyro-Shelf) Settings → System → Screen-recording compatibility (restart to apply)
-      updateCheck: false, // (1.82) Settings → System → Check for new betas
+      autoUpdate: true, // (Tyro-Shelf-17) Settings → About → Check for updates automatically
       shelfNames: {}, // your own names for shelves: { shelfId: name } (PC → Steam); an id left out keeps its original name
       shelfHidden: {}, // games hidden on one shelf only: { shelfId: [game ids] } (the game stays on its other shelves and collections)
       dolphinPadSafe: true, // keep Dolphin from changing a PlayStation pad's mode (the shelf's controller going quiet after a game)
@@ -187,6 +187,7 @@ function sanitize(cfg) {
   ui.dolphinPadSafe = ui.dolphinPadSafe !== false;
   { const out = {}; if (isObj(ui.shelfNames)) for (const [k, v] of Object.entries(ui.shelfNames).slice(0, 200)) { if (typeof k !== 'string' || !k || k.length > 80 || typeof v !== 'string') continue; const n = v.replace(/\s+/g, ' ').trim().slice(0, 40); if (n) out[k] = n; } ui.shelfNames = out; }
   { const out = {}; if (isObj(ui.shelfHidden)) for (const [k, v] of Object.entries(ui.shelfHidden).slice(0, 120)) { if (typeof k !== 'string' || !k || k.length > 80 || !Array.isArray(v)) continue; const ids = [...new Set(v.filter(x => typeof x === 'string' && x && x.length <= 1024))].slice(0, 5000); if (ids.length) out[k] = ids; } ui.shelfHidden = out; }
+  ui.autoUpdate = ui.autoUpdate !== false;
   ui.discordPresence = ui.discordPresence === true;
   ui.discordClientId = typeof ui.discordClientId === 'string' && /^\d{15,25}$/.test(ui.discordClientId.trim()) ? ui.discordClientId.trim() : ''; // a Discord application id is a long number
   if (!['off', 'details', 'shelf'].includes(ui.previews)) ui.previews = 'off'; for (const k of ['previewSound', 'previewYoutube', 'previewClips']) if (typeof ui[k] !== 'boolean') ui[k] = d[k];

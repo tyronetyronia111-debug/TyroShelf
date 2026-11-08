@@ -774,9 +774,19 @@ function handle(name, fn) {
   });
 }
 
-handle('config:get', () => ({ config: cfg, consoles: CONSOLES, apps: APPS, appRoot: paths.appRoot(), version: app.getVersion(), hasInfo: covers.hasInfo(), settingsBlocked: config.blocked() }));
+handle('config:get', () => ({ config: cfg, consoles: CONSOLES, apps: APPS, appRoot: paths.appRoot(), version: app.getVersion(), build: TYRO_BUILD, hasInfo: covers.hasInfo(), settingsBlocked: config.blocked() }));
 // (1.82) Settings → About: the newest beta (force: ask GitHub now, not the answer from this start) and the page's links
-// (Tyro-Shelf) no update check: this build never contacts the original project's release page
+// (Tyro-Shelf-17) updates from Tyro-Shelf's own GitHub releases (package.json tyroRepo): check, and Install (download, then the exe is swapped
+// in once the app has closed: main/updates.js). Never contacts the original project's page.
+const TYRO_PKG = (() => { try { return require('./package.json'); } catch { return {}; } })(), TYRO_BUILD = +TYRO_PKG.tyroBuild || 0;
+handle('update:check', ({ force } = {}) => updates.check(!!force));
+handle('update:install', async () => {
+  if (launcher.isRunning()) throw new Error('Close the game first, then install the update.');
+  const r = await updates.install(pct => { try { if (alive()) win.webContents.send('update:progress', pct); } catch {} });
+  log('Update: installing', r.latest, '- closing so the new exe can start');
+  setTimeout(() => { try { app.quit(); } catch { process.exit(0); } }, 700);
+  return { ok: true, latest: r.latest };
+});
 handle('config:save', next => { if (!next || typeof next !== 'object' || !next.systems || !next.ui) throw new Error('Bad settings.'); return applyCfg({ ...next, art: cfg.art, games: cfg.games, emuSetup: { ...(next.emuSetup || {}), pending: (cfg.emuSetup || {}).pending || [] }, ui: { ...next.ui, sw2Last: cfg.ui.sw2Last } }); }); // Art Studio styles and locks change through art:* only: a Settings save with its older copy mustn't undo them. (beta.8) The same for what main itself keeps: each game's own name and emulator (Details → Rename / Emulator), Set up for me's waiting list and Switch 2's last build: a screen's older copy saved later used to undo a rename, or bring back a setup that was already done
 // settings saved (or restored from a backup): store them and put every change into effect now
 function applyCfg(next) { const prev = cfg, hadMenu = cfg.ui.homeMenu !== false; next = rememberEmus(prev, next); const x = o => o && o.systems && o.systems.x360 && o.systems.x360.emulator; if (x(next) !== x(prev)) next = fixXenia(next); /* (the folder walk only when that path changed) */ cfg = persistCfg(config.normalize(next)); applyArtLibrary(); applyScale(); setTimeout(watchRoms, 0); if (cfg.ui.wiimote === false) wiimote.stop(); else if (wmReady) wmStart(); /* (Settings → Controller → Wii remote, at once) */
@@ -2312,8 +2322,9 @@ function startUp() {
   setTimeout(() => { if ((cfg.systems.sw2 || {}).emulator || (cfg.systems.sw2 || {}).romDirs) nx2.builds(sw2Roots()).catch(() => {}); }, 20000);
   setTimeout(watchRoms, 6000); // after the busy start
   // (1.82) a newer beta on the public page: the shelf says so once (Settings → About → Check for new betas turns it off)
-  updates.init(log);
-  // (Tyro-Shelf) the start-up 'new beta' check was removed
+  updates.init(log, { dir: path.join(app.getPath('userData'), 'update'), build: TYRO_BUILD, repo: TYRO_PKG.tyroRepo || '' });
+  // (Tyro-Shelf-17) a newer release on GitHub: the shelf says so once (Settings → About → Check for updates automatically turns it off)
+  setTimeout(() => { if (cfg.ui.autoUpdate === false) return; updates.check(false).then(r => { if (r && r.newer && alive()) win.webContents.send('app:update', r); }).catch(() => {}); }, 25000);
   setTimeout(sweepTemp, 20000);
   // once: empty the web cache an older version let grow (the 64 MB limit keeps it small from here on)
   setTimeout(() => { try { const mark = path.join(app.getPath('userData'), '.cache-trimmed'); if (fs.existsSync(mark)) return; session.defaultSession.clearCache().then(() => { fs.writeFileSync(mark, ''); log('Web cache emptied'); }).catch(() => {}); } catch {} }, 25000);

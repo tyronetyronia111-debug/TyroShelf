@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld('boxshelf', {
     : { os: 'windows', caps: { steam: true, power: true, homeMenu: true, emuSettings: true, autostart: true, displays: true, folders: true, companionServer: true, winMode: true, dolphinIpl: true, raAutoConfig: true } },
   getConfig: () => call('config:get'),
   openExternal: url => call('app:openExternal', { url }),
+  updateCheck: force => call('update:check', { force: !!force }),
+  updateInstall: () => call('update:install'),
+  onUpdateProgress: fn => ipcRenderer.on('update:progress', (_e, p) => fn(p)),
   onUpdate: cb => ipcRenderer.on('app:update', (_e, r) => cb(r)),
   restoreEmuSettings: () => call('emucfg:restore'),
   // (beta.7) Set up for me

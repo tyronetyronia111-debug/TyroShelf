@@ -20,6 +20,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Stamp the build number and repository into package.json
+        if: github.ref_type == 'tag'
+        shell: bash
+        # the tag "v18" becomes build 18; the in-app updater compares it with the newest release's tag on this repository
+        run: |
+          node -e "const fs=require('fs'),p=JSON.parse(fs.readFileSync('package.json','utf8'));p.tyroBuild=+process.env.GITHUB_REF_NAME.replace(/^v/,'');p.tyroRepo=process.env.GITHUB_REPOSITORY;fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+          grep -E '"tyro(Build|Repo)"' package.json
       - run: npx electron-builder --win portable --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'

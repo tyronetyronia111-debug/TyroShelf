@@ -1088,10 +1088,14 @@ function notePick(){const b=NOTE.btns[NOTE.i];if(b)b.click()}
 function noteClose(run){const el=NOTE.el;if(!el)return;NOTE.el=null;NOTE.btns=[];el.classList.remove("on");setTimeout(()=>el.remove(),260);mode="browse";app.classList.remove("note-open");renderHints();if(typeof run==="function")setTimeout(run,60);else sfx.back();
   if(NOTE.queue.length){clearTimeout(NOTE.t);NOTE.t=setTimeout(noteNext,900)}}
 // a newer version on GitHub (main/updates.js): its highlights and the way to its notes, once per version
+// (Tyro-Shelf-17) Install: the exe is downloaded and checked, Tyro-Shelf closes and the new one starts by itself
+let tyroInstalling=false;api.onUpdateProgress&&api.onUpdateProgress(p=>{if(tyroInstalling)toast("Downloading the update… "+p+"%")});
+function tyroInstall(latest){if(tyroInstalling||!api.updateInstall)return;tyroInstalling=true;toast(`Downloading Tyro-Shelf ${latest}…`);
+  Promise.resolve(api.updateInstall()).then(()=>toast("Installing: Tyro-Shelf closes and starts again by itself")).catch(e=>{tyroInstalling=false;toast(String(e&&e.message||e));play_("error")})}
 function noteUpdate(r){if(!r||!r.newer||!r.latest)return;let seen="";try{seen=localStorage.getItem("updateSeen")||""}catch{}if(seen===r.latest)return;
-  try{localStorage.setItem("updateSeen",r.latest)}catch{}const hl=mdBullets(r.notes).slice(0,3);
-  noteShow({kick:"Update available",title:`Tyro-Shelf ${r.latest} is out`,sub:hl.length?"":"A new version is ready to download.",items:hl,
-    primary:["See what's new",()=>{if(window.Setup)Setup.open({page:"whatsnew"})}],secondary:["Later",null]})}
+  try{localStorage.setItem("updateSeen",r.latest)}catch{}const hl=mdBullets(r.notes).slice(0,3),can=!!(r.canInstall&&api.updateInstall),more=()=>{if(window.Setup)Setup.open({page:"whatsnew"})};
+  noteShow({kick:"Update available",title:`Tyro-Shelf ${r.latest} is out`,sub:hl.length?"":"A new version is ready.",items:hl,
+    primary:can?["Install now",()=>tyroInstall(r.latest)]:["See what's new",more],secondary:can?["See what's new",more]:["Later",null]})}
 // the first start of a new version: its highlights, once (a fresh install just remembers the version)
 function wnCheck(n=0){if(!cfgInfo||!cfgInfo.config){if(n<20)setTimeout(()=>wnCheck(n+1),1500);return}const v=appVer(),ui=cfgInfo.config.ui;if(!v||ui.lastSeenVersion===v)return;
   if(!/\d/.test(v))return; /* (a build without a version number, like the Android one's "Android") */const first=!cfgInfo.config.setupDone,e=wnEntry(v);uiSet("lastSeenVersion",v);if(first||!e)return;
@@ -2221,11 +2225,12 @@ function qsMoveH(d){qsHoldStop();
 // (beta.4) Quick menu → Updates: A checks the beta page now (not the 6-hour copy); once a newer beta is found, A opens its
 // download page in the browser. Windows only (the update check is the Windows build's)
 let qsUpd={state:"",latest:"",cur:"",url:""};
-function qsUpdVal(){return qsUpd.state==="busy"?"Checking…":qsUpd.state==="new"?`${qsUpd.latest} is out · open its page`:qsUpd.state==="ok"?`Up to date · ${qsUpd.cur}`:qsUpd.state==="err"?"Couldn't check · try again":"Check for a newer beta"}
+function qsUpdVal(){return qsUpd.state==="busy"?"Checking…":qsUpd.state==="new"?(qsUpd.can?`${qsUpd.latest} is out · press to install`:`${qsUpd.latest} is out · open its page`):qsUpd.state==="ok"?`Up to date · ${qsUpd.cur}`:qsUpd.state==="err"?"Couldn't check · try again":"Check for updates"}
 async function qsUpdCheck(){if(qsUpd.state==="busy")return;
+  if(qsUpd.state==="new"&&qsUpd.can&&api.updateInstall){qmClose(true);play_("open");tyroInstall(qsUpd.latest);return}
   if(qsUpd.state==="new"&&qsUpd.url){qmClose(true);play_("open");if(api.openExternal)Promise.resolve(api.openExternal(qsUpd.url)).catch(()=>{});toast(`Opening ${qsUpd.latest}'s download page in your browser`);return}
   qsUpd.state="busy";qsSoft();play_("tick",{dir:1});
-  try{const r=await api.updateCheck(true);qsUpd={state:r&&r.newer?"new":"ok",latest:(r&&r.latest)||"",cur:(r&&r.current)||"",url:(r&&r.url)||""};if(r&&r.newer)play_("open")}
+  try{const r=await api.updateCheck(true);qsUpd={state:r&&r.newer?"new":"ok",latest:(r&&r.latest)||"",cur:(r&&r.current)||"",url:(r&&r.url)||"",can:!!(r&&r.canInstall)};if(r&&r.newer)play_("open")}
   catch(e){qsUpd.state="err";play_("error")}
   qsSoft()}
 function qsPick(){const x=qm.rows[qm.r];if(!x)return;const r=x.r;

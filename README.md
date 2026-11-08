@@ -15,6 +15,10 @@ Everything it saves (settings, caches, your log) goes in a `data` folder next to
 Windows SmartScreen may warn that the file is from an unknown publisher: the exe isn't code-signed. Choose
 **More info → Run anyway**, or build it yourself (below).
 
+**Updates:** Tyro-Shelf checks this page's releases when it starts (Settings → About → *Check for updates automatically*).
+When a newer build is out it tells you; **Install** downloads it, checks it, closes Tyro-Shelf and starts the new one. Your
+settings and games stay as they are, and the old exe is kept as `data\update\previous.exe`. Nothing installs without you pressing Install.
+
 Tyro-Shelf doesn't include or download any games, BIOS files or keys. You supply your own emulators and games.
 
 ## What's different from Boxshelf
@@ -43,12 +47,17 @@ npx electron-builder --win portable    # builds dist\Tyro-Shelf.exe
 
 ## Releasing (for the maintainer)
 
-Push a tag and GitHub Actions builds the exe and attaches it to a release:
+Push a tag and GitHub Actions builds the exe and attaches it to a release. The tag is a whole number, always higher
+than the last one (`v18`, then `v19`...): it becomes the build number the in-app updater compares, and the repository
+name is stamped in automatically, so the updater needs no setup:
 
 ```
-git tag v17
-git push origin v17
+git tag v18
+git push origin v18
 ```
+
+Write the release notes as a bulleted list (`- one thing`): the first few bullets show on the shelf's "update available" card.
+An exe built any other way (not by this workflow) has no repository set, so its updater stays off.
 
 ## Credits and licence
 
