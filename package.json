@@ -4,7 +4,7 @@
   "version": "1.82.0-beta.8",
   "description": "Tyro-Shelf: a modified Boxshelf (TV-style launcher for emulators, Steam and media apps)",
   "license": "GPL-3.0-only",
-  "tyroBuild": 21,
+  "tyroBuild": 22,
   "tyroRepo": "",
   "main": "main.js",
   "private": true,

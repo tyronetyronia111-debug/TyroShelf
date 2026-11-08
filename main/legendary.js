@@ -15,7 +15,9 @@ function init(logger, dataDir) { if (logger) log = logger; dir = dataDir || ''; 
 const setPath = p => { custom = String(p || ''); };
 const isFile = p => { try { return fs.statSync(p).isFile(); } catch { return false; } };
 const exeName = process.platform === 'win32' ? 'legendary.exe' : 'legendary';
-const cfgDir = () => process.env.LEGENDARY_CONFIG_PATH || path.join(os.homedir(), '.config', 'legendary');
+// where Legendary keeps user.json / installed.json: its own setting, ~/.config/legendary, or (other builds) the app-data folders
+function cfgDirs() { const e = process.env, l = [e.LEGENDARY_CONFIG_PATH, path.join(os.homedir(), '.config', 'legendary'), e.APPDATA && path.join(e.APPDATA, 'legendary'), e.LOCALAPPDATA && path.join(e.LOCALAPPDATA, 'legendary'), e.XDG_CONFIG_HOME && path.join(e.XDG_CONFIG_HOME, 'legendary')]; return l.filter(Boolean); }
+function cfgDir() { const l = cfgDirs(); for (const f of ['user.json', 'installed.json']) { const d = l.find(x => isFile(path.join(x, f))); if (d) return d; } return l[0]; }
 
 // the exe to use: the one chosen in Settings, the one Tyro-Shelf downloaded, one on PATH
 function find() {
@@ -27,7 +29,7 @@ function find() {
 }
 const run = (args, ms = 30000) => new Promise(res => {
   const exe = find(); if (!exe) return res({ ok: false, out: 'Legendary was not found.' });
-  try { execFile(exe, args, { windowsHide: true, timeout: ms, maxBuffer: 16 << 20, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } }, (err, so, se) => res({ ok: !err, out: String(so || '') + String(se || '') })); } catch (e) { res({ ok: false, out: e.message }); }
+  try { execFile(exe, args, { windowsHide: true, timeout: ms, maxBuffer: 16 << 20, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } }, (err, so, se) => res({ ok: !err, out: String(so || '') + String(se || ''), stdout: String(so || '') })); } catch (e) { res({ ok: false, out: e.message }); }
 });
 
 // installed.json: { <app_name>: { title, install_path, executable, launch_parameters, is_dlc, ... } }
@@ -46,10 +48,10 @@ function installed() {
 // signed in? user.json is what Legendary writes after a successful login; `status` only adds the account name
 async function status() {
   const exe = find(); if (!exe) return { found: false };
-  let signedIn = false; try { signedIn = fs.statSync(path.join(cfgDir(), 'user.json')).size > 20; } catch {}
+  let signedIn = signedInFile(); log('Legendary status: exe', exe, '| config', cfgDir(), '| signed in', signedIn);
   let acct = '';
-  if (signedIn) { const r = await run(['status', '--json', '--offline'], 20000); try { acct = String(JSON.parse(r.out.slice(r.out.indexOf('{'))).account || ''); } catch {} if (/not logged|^<.*>$/i.test(acct)) acct = ''; }
-  return { found: true, exe, signedIn, account: acct };
+  if (true) { const r = await run(['status', '--json', '--offline'], 20000); try { acct = String(JSON.parse(r.stdout.slice(r.stdout.indexOf('{'))).account || ''); } catch {} if (/not logged|^<.*>$/i.test(acct)) acct = ''; }
+  return { found: true, exe, signedIn: signedIn || !!acct, account: acct };
 }
 const authCode = async code => {
   code = String(code || '').trim().replace(/^"|"$/g, '');
@@ -95,7 +97,7 @@ async function download() {
 
 // the games the account owns (`legendary list --json`), kept in a small cache so the shelf can show what isn't installed yet
 const ownedFile = () => path.join(dir || os.tmpdir(), 'owned.json');
-const signedInFile = () => { try { return fs.statSync(path.join(cfgDir(), 'user.json')).size > 20; } catch { return false; } };
+const signedInFile = () => cfgDirs().some(d => { try { return fs.statSync(path.join(d, 'user.json')).size > 20; } catch { return false; } });
 function owned() { try { const j = JSON.parse(fs.readFileSync(ownedFile(), 'utf8')); return { at: +j.at || 0, games: Array.isArray(j.games) ? j.games : [] }; } catch { return { at: 0, games: [] }; } }
 let refreshing = null;
 function refreshOwned() {
@@ -103,7 +105,7 @@ function refreshOwned() {
   refreshing = (async () => {
     if (!find() || !signedInFile()) return false;
     const r = await run(['list', '--json'], 180000);
-    let arr; try { arr = JSON.parse(r.out.slice(r.out.indexOf('['))); } catch { log('Legendary list: unreadable answer', String(r.out).slice(0, 200)); return false; }
+    let arr; try { const t = r.stdout, i = t.search(/\[\s*(\{|\])/); arr = JSON.parse(t.slice(i)); } catch { log('Legendary list: unreadable answer', String(r.out).replace(/\s+/g, ' ').slice(0, 300)); return false; }
     if (!Array.isArray(arr)) return false;
     const games = [];
     for (const g of arr) {
