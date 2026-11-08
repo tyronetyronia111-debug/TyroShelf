@@ -29,7 +29,7 @@ function defaults() {
   return {
     setupDone: false,
     systems,
-    steam: { enabled: true, path: '', hideTools: true },
+    steam: { enabled: true, path: '', hideTools: true, owned: true, apiKey: '', steamId: '', family: '' },
     // (beta.4) PC games beyond Steam (main/pcgames.js): Epic's installs on the PC shelf; Quiver Launcher's apps and games
     // added by hand ({ id, title, exe, args }) on the Custom shelf. quiverPath: a portable Quiver's folder, chosen or found
     pc: { epic: true, quiver: true, quiverPath: '', custom: [], gog: true, ubisoft: true, ea: true, xbox: true, hoyoplay: true, legendary: true, legendaryPath: '' },
@@ -238,6 +238,8 @@ function sanitize(cfg) {
   if ('tvLast' in ui) { const t = isObj(ui.tvLast) ? ui.tvLast : {}, o = {}; for (const k of ['ads', 'trailers', 'recent', 'mix']) if (typeof t[k] === 'string' && t[k] && t[k].length <= 600) o[k] = t[k]; ui.tvLast = o; }
   { const seen = new Set(), out = []; for (const v of Array.isArray(ui.hidden) ? ui.hidden : []) { if (typeof v !== 'string' && typeof v !== 'number') continue; const s = String(v).slice(0, 2048); if (!s || seen.has(s)) continue; seen.add(s); out.push(s); if (out.length >= 5000) break; } ui.hidden = out; }
   if (isObj(cfg.steam) && typeof cfg.steam.hideTools !== 'boolean') cfg.steam.hideTools = true;
+  if (isObj(cfg.steam)) { const st = cfg.steam, t = (v, n) => typeof v === 'string' ? v.trim().slice(0, n) : ''; // (Tyro-Shelf-24) your own Steam Web API key and ID, for the owned-games list
+    st.apiKey = /^[0-9A-Fa-f]{32}$/.test(t(st.apiKey, 40)) ? t(st.apiKey, 40) : ''; st.steamId = /^\d{17}$/.test(t(st.steamId, 20)) ? t(st.steamId, 20) : ''; st.family = t(st.family, 400).replace(/[^\d\s,;]/g, ''); if (typeof st.owned !== 'boolean') st.owned = true; }
   cfg.art = sanitizeArt(cfg.art, ui);
   return cfg;
 }

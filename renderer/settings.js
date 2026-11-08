@@ -152,6 +152,11 @@ function build(){
   ]},
   {g:"Games",id:"pc",name:"PC games",ic:"pc",lead:"Your installed Steam games, on a shelf of their own.",rows:[
     T("Show installed Steam games","steam.enabled",true,"Adds a PC shelf with every game Steam has installed. Uninstalled games are left out.",{rescan:true,keys:"steam"}),
+    T("Show Steam games you own but haven't installed","steam.owned",true,"Adds your whole Steam library to the PC shelf, with a NOT INSTALLED tag on the ones you haven't installed; Play opens Steam's install window. Needs your own Steam Web API key (below) and public game details on your profile.",{rescan:true,keys:"steam library owned not installed install family",sub:()=>stSub()}),
+    X("Steam Web API key","steam.apiKey","Free: sign in at steamcommunity.com/dev/apikey (any domain name works) and paste the 32-character key. It stays in your settings file and is only sent to Steam. Don't share your data folder.",{rescan:true,keys:"steam web api key owned library",ph:"32 characters",secret:true,when:()=>cfg&&cfg.steam&&cfg.steam.owned!==false}),
+    X("Steam ID","steam.steamId","Your 17-digit Steam ID. Found by itself from the Steam account that signed in last; type it only if that's wrong.",{rescan:true,keys:"steam id account",ph:"Found automatically",when:()=>cfg&&cfg.steam&&cfg.steam.owned!==false}),
+    X("Family members' Steam IDs","steam.family","Steam Family Sharing: list the 17-digit Steam IDs of family members (separated by commas) and the games they own that you don't are added as FAMILY SHARED. Their game details must be public.",{rescan:true,keys:"steam family sharing shared library",ph:"Optional",when:()=>cfg&&cfg.steam&&cfg.steam.owned!==false}),
+    {t:"action",label:"Steam library",btn:"Refresh",info:"Reads your owned (and family-shared) games from Steam now. It also refreshes by itself twice a day.",ns:true,keys:"steam library refresh owned",when:()=>cfg&&cfg.steam&&cfg.steam.owned!==false&&!!cfg.steam.apiKey,run:async()=>{toast("Reading your Steam library…");const r=await Promise.resolve(api.steamRefresh()).catch(e=>({ok:false,error:errMsg(e)}));stSt=null;if(r&&r.ok)toast(`Steam library: ${r.own} games`+(r.shared?`, ${r.shared} family shared`:""));else{toast((r&&r.error)||"Couldn't read the Steam library");play("error")}}},
     T("Hide Steam tools","steam.hideTools",true,"Leaves Proton, Steamworks Common Redistributables and other tools off the shelf.",{rescan:true,keys:"redistributables proton steam"}),
     F("Steam folder","steam.path","folder","The folder that contains steam.exe. Found automatically; change it only if Steam lives somewhere unusual.",{ph:"C:\\Program Files (x86)\\Steam",rescan:true,want:"dir",pickTitle:"Choose your Steam folder"}),
     A("Get Steam","Open site","Opens Steam's download page in your browser.",()=>openLink(OFFICIAL.steam)),
@@ -702,6 +707,9 @@ const sw2Row=()=>!!api.sw2Builds&&!(window.bsPlatform&&bsPlatform.os==="android"
 // for when the page is drawn
 let pcSt=null,pcAsking=false;const customNameRows=new WeakMap();
 // (beta.7) a store row's line: "3 installed" / "None installed" once main has counted (null while asking)
+let stSt=null,stAsk=false;
+function stSub(){if(!stSt){if(!stAsk&&api.steamStatus){stAsk=true;Promise.resolve(api.steamStatus()).then(r=>{stSt=r||{};stAsk=false;bump()}).catch(()=>{stSt={};stAsk=false})}return null}
+  return !stSt.hasKey?{text:"Add your Steam Web API key",cls:"warn"}:{text:`${stSt.own||0} owned`+(stSt.shared?` · ${stSt.shared} family shared`:"")}}
 // (Tyro-Shelf-19) Legendary rows
 let lgSt=null,lgAsking=false;
 const pcOn=k=>!cfg||!cfg.pc||cfg.pc[k]!==false;

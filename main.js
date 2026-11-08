@@ -30,10 +30,11 @@ function scanSystem(def, sc) {
   return gs.map(g => { const o = G[def.id + ':' + g.file]; return o && o.title && o.title !== g.title ? { ...g, fileTitle: g.title, title: o.title } : g; });
 }
 const ownTitle = id => { const o = cfg && cfg.games && cfg.games[String(id)]; return o && o.title ? o.title : ''; }; // (PC games, by id)
-const { scanSteam } = require('./main/steam');
+const { scanSteam, isTool } = require('./main/steam');
 const steamart = require('./main/steamart');
 const legendary = require('./main/legendary'); // (Tyro-Shelf-19) Epic games through Legendary
 const gscripts = require('./main/gamescripts'); // (Tyro-Shelf-19) scripts and programs opened along with a game
+const steamowned = require('./main/steamowned'); // (Tyro-Shelf-24) owned and family-shared Steam games
 const pcgames = require('./main/pcgames'); // (beta.4) Epic, Quiver Launcher and games added by hand
 const pccovers = require('./main/pccovers'); // (beta.5) choosing a PC game's cover (SteamGridDB, Steam's own, your own)
 const wiiumanual = require('./main/wiiumanual');
@@ -584,7 +585,7 @@ function iconQuick(exe) {
 // (beta.7) store games: real store titles, so their covers come from the Steam app with the same name (not Quiver's or
 // hand-added programs: those often share a name with an unrelated game)
 const STORE_SRC = new Set(['epic', 'gog', 'ubisoft', 'ea', 'xbox', 'hoyoplay']);
-let lgTried = 0;
+let lgTried = 0, ownTried = 0, steamNotInst = new Set();
 async function buildLibrary() {
   const shelves = [];
   for (const def of CONSOLES) {
@@ -602,6 +603,16 @@ async function buildLibrary() {
   if (cfg.steam.enabled && cfg.steam.path) {
     // Steam's own cached art first, then anything Boxshelf fetched from the Steam store for games Steam has no cover for
     pcShelf = scanSteam(cfg.steam.path, { hideTools: cfg.steam.hideTools !== false }).map(g => { const l = steamart.local(g.appid); return { ...g, ...(ownTitle(g.id) ? { title: ownTitle(g.id), fileTitle: g.title } : {}), info: steamart.gameInfo(g.appid), art: { front: fileUrl(pccovers.cover(g.id) || g.art.front || l.front), hero: fileUrl(g.art.hero || l.hero) } }; }); // (beta.5: a cover chosen in the picker wins)
+  }
+    // (Tyro-Shelf-24) the Steam games you own but haven't installed, and family-shared ones (main/steamowned.js, your own API key)
+  steamNotInst = new Set();
+  if (cfg.steam.enabled && cfg.steam.owned !== false && cfg.steam.apiKey) {
+    const ids = new Set(pcShelf.map(g => String(g.appid))), c = steamowned.cache(), sid = cfg.steam.steamId || steamowned.detectId(cfg.steam.path || '');
+    const add = (g, shared) => { if (ids.has(g.appid) || (cfg.steam.hideTools !== false && isTool(g.appid, g.name))) return; ids.add(g.appid); steamNotInst.add(g.appid); const id = 'steam-' + g.appid, l = steamart.local(g.appid);
+      pcShelf.push({ kind: 'steam', id, appid: g.appid, title: ownTitle(id) || g.name, sizeBytes: 0, minutes: 0, lastPlayed: 0, notInstalled: true, ...(shared ? { shared: true } : {}), info: steamart.gameInfo(g.appid), art: { front: fileUrl(pccovers.cover(id) || l.front), hero: fileUrl(l.hero) } }); };
+    for (const g of c.own) add(g, false);
+    if (cfg.steam.family) for (const g of c.shared) add(g, true);
+    if (steamowned.detectId && (Date.now() - c.at > 12 * 3600e3 || (sid && c.id !== sid)) && Date.now() - ownTried > 30 * 60e3) { ownTried = Date.now(); steamowned.refresh({ key: cfg.steam.apiKey, steamId: sid, family: cfg.steam.family }).then(r => { if (r && r.ok && alive()) win.webContents.send('library:changed', { steam: 1 }); }); }
   }
   // (beta.4) Epic's installs join the PC shelf; Quiver Launcher's apps and games added by hand get the Custom shelf. They
   // are PC games with a source (kind 'steam' keeps every shelf feature); covers come from the Steam app their title
@@ -622,7 +633,7 @@ async function buildLibrary() {
   // (Steam art by title only for Epic's store games: a recomp or a program added by hand often shares its name with an
   // unrelated Steam game, "Quarantine" got a puzzle game's cover; they keep the made-up case)
   const pcGame = g => { const sid = STORE_SRC.has(g.source) ? pcgames.steamIdOf(g.title) : null, l = sid ? steamart.local(sid) : {};
-    return { kind: 'steam', source: g.source, id: g.id, title: g.title, ...(g.legendary ? { tracked: true } : {}), ...(g.notInstalled ? { notInstalled: true, region: 'Not installed' } : {}), ...(sid ? { info: steamart.gameInfo(sid) } : {}), art: { front: fileUrl(pccovers.cover(g.id) || l.front), back: fileUrl(pccovers.cover(g.id, 'back')) || undefined, spine: fileUrl(pccovers.cover(g.id, 'spine')) || undefined, hero: fileUrl(l.hero), icon: g.icon || undefined } }; };
+    return { kind: 'steam', source: g.source, id: g.id, title: g.title, ...(g.legendary ? { tracked: true } : {}), ...(g.source === 'epic' && !g.notInstalled ? { installed: true } : {}), ...(g.notInstalled ? { notInstalled: true, region: 'Not installed' } : {}), ...(sid ? { info: steamart.gameInfo(sid) } : {}), art: { front: fileUrl(pccovers.cover(g.id) || l.front), back: fileUrl(pccovers.cover(g.id, 'back')) || undefined, spine: fileUrl(pccovers.cover(g.id, 'spine')) || undefined, hero: fileUrl(l.hero), icon: g.icon || undefined } }; };
   // (Tyro-Shelf-20) Epic and HoYoPlay games get a shelf each; the other stores stay on the PC shelf
   const byTitle = (a, b) => String(a.title).localeCompare(String(b.title), undefined, { sensitivity: 'base' });
   const own = src => epic.filter(g => g.source === src);
@@ -1430,7 +1441,13 @@ handle('launch:app', async ({ appId, link }) => {
   const cover = coverWhileStarting(a.fullscreen === false ? 4 : (+a.coverSeconds || 15));
   return { ...r, cover };
 });
-handle('launch:steam', ({ appid }) => launcher.launchSteam(appid));
+handle('launch:steam', ({ appid }) => {
+  if (steamNotInst.has(String(appid))) { if (!/^\d{1,10}$/.test(String(appid))) throw new Error('Unknown Steam game.'); shell.openExternal('steam://install/' + appid); throw new Error("It isn't installed. Steam's install window is open: choose where to put it there, then refresh the shelf when it has finished."); }
+  return launcher.launchSteam(appid);
+});
+// ---- (Tyro-Shelf-24) Settings → PC → Steam: the account found, the last count, refresh now
+handle('steam:status', () => { const c = steamowned.cache(); return { id: cfg.steam.steamId || steamowned.detectId(cfg.steam.path || ''), own: c.own.length, shared: c.shared.length, at: c.at, hasKey: !!cfg.steam.apiKey }; });
+handle('steam:refresh', async () => { const r = await steamowned.refresh({ key: cfg.steam.apiKey, steamId: cfg.steam.steamId || steamowned.detectId(cfg.steam.path || ''), family: cfg.steam.family }); if (r.ok && alive()) win.webContents.send('library:changed', { steam: 1 }); return r; });
 // (beta.4) a PC game that isn't Steam's, named by id only: Epic's go through its launcher's link; Quiver's and the ones
 // added by hand start their own program in its own folder (recomps read their files from there), with the Home menu and
 // the quit buttons like any app
@@ -2377,7 +2394,7 @@ function startUp() {
   stremio.init({ log, fanartKey: () => (cfg && cfg.keys && cfg.keys.fanart) || '', artDir: path.join(app.getPath('userData'), 'stremio-art'), fetchBuf: async url => { const r = await net.fetch(url); if (r.status === 404) return null; if (!r.ok) throw new Error('HTTP ' + r.status); return Buffer.from(await r.arrayBuffer()); } }); // null = really not there; other failures throw, so nothing "missing" is cached for them
   icons.init(app.getPath('userData'), log);
   x360.init(app.getPath('userData'), log);
-  steamart.init(app.getPath('userData'), log); pcgames.init(app.getPath('userData'), log); gscripts.init(log); legendary.init(log, path.join(app.getPath('userData'), 'legendary')); legendary.setPath(cfg && cfg.pc && cfg.pc.legendaryPath); pccovers.init({ dataDir: app.getPath('userData'), log, placed: d => artVer.set(path.resolve(d).toLowerCase(), Date.now()), fileUrl, fetchImage, steamgrid: require('./main/steamgrid'), steamCover: id => steamart.local(id).front, match: covers.sgMatch });
+  steamart.init(app.getPath('userData'), log); pcgames.init(app.getPath('userData'), log); gscripts.init(log); steamowned.init(log, app.getPath('userData')); legendary.init(log, path.join(app.getPath('userData'), 'legendary')); legendary.setPath(cfg && cfg.pc && cfg.pc.legendaryPath); pccovers.init({ dataDir: app.getPath('userData'), log, placed: d => artVer.set(path.resolve(d).toLowerCase(), Date.now()), fileUrl, fetchImage, steamgrid: require('./main/steamgrid'), steamCover: id => steamart.local(id).front, match: covers.sgMatch });
   wiiumanual.init(app.getPath('userData'), log);
   ra.init(app.getPath('userData'), log); ra.setCredentials(cfg.ra && cfg.ra.enabled !== false ? cfg.ra.user : '', cfg.ra && cfg.ra.key);
   manuals.init(log); archive.init(log); manuals.setStore(path.join(app.getPath('userData'), 'manual-auto.json')); manuals.setRejectStore(path.join(app.getPath('userData'), 'manual-rejects.json'));

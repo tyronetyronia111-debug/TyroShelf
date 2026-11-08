@@ -57,6 +57,7 @@ contextBridge.exposeInMainWorld('boxshelf', {
   gameDiscord: o => call('game:discord', o), // { systemId, file } or { id }, and discord: { hide, name, image } (empty = the default)
   legendaryStatus: () => call('legendary:status'), legendaryDownload: () => call('legendary:download'), legendaryLogin: () => call('legendary:login'), legendaryCode: code => call('legendary:code', { code }), legendaryLogout: () => call('legendary:logout'), // (Tyro-Shelf-19)
   legendaryAuthWindow: () => call('legendary:authwin'), legendaryRefresh: () => call('legendary:refresh'), gameActions: o => call('game:actions', o),
+  steamStatus: () => call('steam:status'), steamRefresh: () => call('steam:refresh'),
   gameScripts: o => call('game:scripts', o), shortcutCreate: o => call('shortcut:create', o), shortcutTake: () => call('shortcut:take'), onShortcut: cb => ipcRenderer.on('shortcut:launch', (e, id) => cb(id)),
   gameWindow: o => call('game:window', o), // (Tyro-Shelf-15) { id } and window: '' (the game's own setting) | 'borderless' | 'windowed'
   renameGame: o => call('game:rename', o), // (beta.5) { systemId, file } or { id }, and title ('' = back to the file's name)

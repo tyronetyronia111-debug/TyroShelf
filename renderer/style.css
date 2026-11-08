@@ -789,3 +789,9 @@ body.pad-input .d-adv summary.pad-focus{border-radius:8px;width:max-content;padd
 #app.note-open .hints{opacity:0;transition:opacity .2s}
 html.reduce-motion .note-card{transition:none}
 .note-card{z-index:400} /* (inside #app: over the shelf, its theme layers and the hint bar; Settings opens over it) */
+
+/* (Tyro-Shelf-24) install state of store games: a ribbon across the cover's corner; not installed ones are paler */
+.tagrib{position:absolute;left:0;right:0;bottom:0;padding:.35em .2em;text-align:center;font:700 clamp(8px,calc(var(--ch)*.032),13px)/1.1 system-ui,sans-serif;letter-spacing:.08em;color:#fff;background:rgba(10,12,18,.78);z-index:2;pointer-events:none}
+.slot.inst .tagrib{background:rgba(22,110,60,.82)}
+.slot.ninst .tagrib{background:rgba(150,60,20,.85)}
+.slot.ninst .f-front img{filter:grayscale(.7) brightness(.8)}
